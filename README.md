@@ -18,7 +18,8 @@ shows the AI screener's top-20 picks from the NSE large-cap universe.
   screener/chat, with automatic Groq (Llama 3.3 70B) fallback when Gemini rate
   limits. Results are cached per day to stay well inside the free quotas.
   See [DESIGN.md](DESIGN.md), [DESIGN_ANALYSIS.md](DESIGN_ANALYSIS.md), and
-  the deep dive [AGENTIC_AI_DESIGN.md](AGENTIC_AI_DESIGN.md).
+  the deep dive [AGENTIC_AI_DESIGN.md](AGENTIC_AI_DESIGN.md). Interview
+  prep on the AI concepts: [prepare.md](prepare.md).
 - **Frontend**: React (Vite), dark dashboard UI.
 
 ## Setup
