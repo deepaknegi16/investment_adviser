@@ -1,0 +1,58 @@
+# Indian Stock Portfolio Adviser
+
+Personal dashboard for tracking NSE shares: live-ish prices (Yahoo Finance, ~15 min
+delayed), 1W/1M/1Y/5Y performance, a green/orange/red trend status, and a rule-based
+buy/hold/sell recommendation per share. Clicking a share opens a detail view with a
+price chart, technicals, and — powered by Claude agents — a recent-news digest,
+short/long-term prediction, and an AI recommendation with reasoning. A second table
+shows the AI screener's top-20 picks from the NSE large-cap universe.
+
+> ⚠ Everything here is informational. It is **not financial advice**.
+
+## Stack
+
+- **Backend**: Python (FastAPI) + `yfinance` for market data + SQLite for the
+  watchlist and AI-result caches.
+- **Agentic AI**: Anthropic Python SDK — two agents built on the beta tool runner
+  (`claude-opus-5`), with client-side tools for prices/technicals and the
+  `web_search` server tool for news. Results are cached per day to control cost.
+- **Frontend**: React (Vite), dark dashboard UI.
+
+## Setup
+
+### 1. Backend
+
+```sh
+cd backend
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+cp .env.example .env       # then put your Anthropic API key in .env
+.venv/bin/uvicorn app.main:app --port 8000
+```
+
+Without an `ANTHROPIC_API_KEY` the price table, chart, and add/remove features all
+work; only the AI analysis and top-20 picks return a "credentials missing" message.
+
+### 2. Frontend
+
+```sh
+cd frontend
+npm install
+npm run dev                # http://localhost:5173
+```
+
+The Vite dev server proxies `/api` to the backend on port 8000.
+
+## Notes
+
+- The watchlist is seeded on first run with: Infosys, Wipro, Goldbees, Adani Green,
+  HDFC Bank, ONGC, BEL, PNB, ATGL, ITC, LIC, SBI. Add more via **＋ Add share**
+  (search by company name; NSE symbols only).
+- AI analysis is cached per share per day in `backend/adviser.db`; use
+  **↻ Refresh AI analysis** / **↻ Refresh picks** to force a rerun. A full agent run
+  can take a few minutes.
+- The screener universe lives in `backend/app/nifty100.json` — edit it to widen or
+  narrow the top-20 candidate pool.
+- Yahoo Finance access is unofficial and occasionally rate-limits; all Yahoo calls
+  are isolated in `backend/app/market_data.py` and cached (prices 10 min, analyst
+  consensus 24 h).
