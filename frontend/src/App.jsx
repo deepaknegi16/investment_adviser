@@ -6,6 +6,7 @@ import StockDrawer from "./components/StockDrawer.jsx";
 import AddShareDialog from "./components/AddShareDialog.jsx";
 import Login from "./components/Login.jsx";
 import ChatPanel from "./components/ChatPanel.jsx";
+import MetricsDialog from "./components/MetricsDialog.jsx";
 
 export default function App() {
   const [authed, setAuthed] = useState(() => Boolean(getToken()));
@@ -14,6 +15,7 @@ export default function App() {
   const [updatedAt, setUpdatedAt] = useState(null);
   const [selected, setSelected] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [showMetrics, setShowMetrics] = useState(false);
 
   useEffect(() => {
     const onExpired = () => setAuthed(false);
@@ -72,6 +74,7 @@ export default function App() {
             </span>
           )}
           <button onClick={() => setShowAdd(true)}>＋ Add share</button>
+          <button className="ghost" onClick={() => setShowMetrics(true)}>📊 Metrics</button>
           <button className="ghost" onClick={logout}>Log out</button>
         </div>
       </div>
@@ -115,6 +118,7 @@ export default function App() {
         />
       )}
       {showAdd && <AddShareDialog onAdd={handleAdd} onClose={() => setShowAdd(false)} />}
+      {showMetrics && <MetricsDialog onClose={() => setShowMetrics(false)} />}
       <ChatPanel />
     </div>
   );

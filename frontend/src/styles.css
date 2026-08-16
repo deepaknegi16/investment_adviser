@@ -253,3 +253,37 @@ button.danger { background: transparent; color: var(--red); border: 1px solid va
 .logic-item:first-of-type { border-top: none; }
 .logic-score { font-weight: 700; min-width: 28px; text-align: right; }
 .pick-panel { margin-top: 10px; border-color: rgba(245, 158, 11, 0.4); }
+
+/* ---------- metrics dialog ---------- */
+.metrics-dialog { width: min(720px, 96vw); max-height: 86vh; overflow-y: auto; }
+.metrics-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.metrics-head h3 { margin: 0; }
+.stat-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 10px; margin-bottom: 14px;
+}
+.eval-grid { margin-bottom: 0; }
+.stat-tile {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px;
+}
+.stat-value {
+  font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.stat-label {
+  color: var(--muted); font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.05em; margin-top: 2px;
+}
+.stat-sub { color: var(--muted); font-size: 11px; margin-top: 2px; }
+.metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 560px) { .metrics-grid { grid-template-columns: 1fr; } }
+.metrics-dialog h4 {
+  margin: 8px 0 4px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--muted); font-weight: 600;
+}
+.metrics-dialog .kv dd { font-variant-numeric: tabular-nums; }
+.metrics-dialog code {
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 5px; font-size: 12px;
+}
