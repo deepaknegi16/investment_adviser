@@ -1,16 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
-import { api } from "./api.js";
+import { api, getToken, setToken } from "./api.js";
 import PortfolioTable from "./components/PortfolioTable.jsx";
 import PicksTable from "./components/PicksTable.jsx";
 import StockDrawer from "./components/StockDrawer.jsx";
 import AddShareDialog from "./components/AddShareDialog.jsx";
+import Login from "./components/Login.jsx";
+import ChatPanel from "./components/ChatPanel.jsx";
 
 export default function App() {
+  const [authed, setAuthed] = useState(() => Boolean(getToken()));
   const [shares, setShares] = useState(null);
   const [error, setError] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
   const [selected, setSelected] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
+
+  useEffect(() => {
+    const onExpired = () => setAuthed(false);
+    window.addEventListener("auth-expired", onExpired);
+    return () => window.removeEventListener("auth-expired", onExpired);
+  }, []);
 
   const loadWatchlist = useCallback(async () => {
     try {
@@ -24,10 +33,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!authed) return;
     loadWatchlist();
     const id = setInterval(loadWatchlist, 60_000);
     return () => clearInterval(id);
-  }, [loadWatchlist]);
+  }, [loadWatchlist, authed]);
 
   const handleAdd = async (symbol, name) => {
     await api.addShare(symbol, name);
@@ -41,6 +51,16 @@ export default function App() {
     loadWatchlist();
   };
 
+  if (!authed) {
+    return <Login onLogin={() => setAuthed(true)} />;
+  }
+
+  const logout = () => {
+    setToken(null);
+    setShares(null);
+    setAuthed(false);
+  };
+
   return (
     <div className="app">
       <div className="topbar">
@@ -52,6 +72,7 @@ export default function App() {
             </span>
           )}
           <button onClick={() => setShowAdd(true)}>＋ Add share</button>
+          <button className="ghost" onClick={logout}>Log out</button>
         </div>
       </div>
 
@@ -85,6 +106,7 @@ export default function App() {
         />
       )}
       {showAdd && <AddShareDialog onAdd={handleAdd} onClose={() => setShowAdd(false)} />}
+      <ChatPanel />
     </div>
   );
 }

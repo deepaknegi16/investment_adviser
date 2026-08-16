@@ -45,6 +45,17 @@ npm run dev                # http://localhost:5173
 
 The Vite dev server proxies `/api` to the backend on port 8000.
 
+## Login, chat, and voice
+
+- The app is protected by a **login page (JWT auth)**. Default credentials are
+  `deepak` / `adviser@123` — change them by setting `AUTH_USERNAME` and
+  `AUTH_PASSWORD` in `backend/.env`.
+- The floating **💬 Research chat** answers questions grounded (via RAG) in the
+  AI research this app has generated — per-stock analyses and screener runs —
+  plus a live watchlist snapshot, and cites which research it used.
+- The chat's **🎙 mic button** takes voice commands (browser Web Speech API,
+  works in Chrome): speak your question and it is transcribed and sent.
+
 ## Notes
 
 - The watchlist is seeded on first run with: Infosys, Wipro, Goldbees, Adani Green,

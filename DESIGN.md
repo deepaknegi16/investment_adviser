@@ -139,6 +139,40 @@ ranks those 30 — AI judgment where it adds value, arithmetic in code.
 
 Both are overridable via `ANALYST_MODEL` / `SCREENER_MODEL` in `backend/.env`.
 
+## 3b. Auth, chat (RAG), and voice
+
+**Authentication (JWT).** `POST /api/auth/login` checks credentials from
+`backend/.env` (`AUTH_USERNAME`/`AUTH_PASSWORD`) and issues a 24-hour HS256 JWT;
+every other `/api` route requires it as a Bearer token (401 otherwise). The
+signing secret is auto-generated once into gitignored `backend/jwt_secret.key`.
+The React app stores the token in localStorage, attaches it to every request,
+and drops back to the login page on any 401.
+
+**Research chat (RAG).** A floating chat panel answers questions grounded in the
+app's own agentic research:
+
+```mermaid
+flowchart LR
+    Q[user question - typed or spoken] --> E[embed query\ntext-embedding-3-small]
+    subgraph Index [rag_chunks in SQLite]
+        A1[each Analyst run → 1 chunk]
+        A2[each Screener run → 1 chunk]
+    end
+    E --> R[cosine top-5 retrieval\nkeyword fallback if embeddings unavailable]
+    Index --> R
+    R --> C[gpt-5-mini chat turn\ncontext = retrieved research + live watchlist snapshot]
+    C --> Ans[answer + grounded-in sources shown in UI]
+```
+
+Every Analyst/Screener result is flattened to text and indexed (with an OpenAI
+embedding) the moment it is cached, so the chat corpus grows as you use the app.
+The reply cites which stock/date research it drew on; if nothing matches, it
+says so and points you at generating the analysis first.
+
+**Voice commands.** The chat's mic button uses the browser's Web Speech API
+(`SpeechRecognition`, `en-IN`) — speech is transcribed client-side in Chrome and
+sent as a normal chat message. No audio ever reaches the backend.
+
 ## 4. Data model (SQLite)
 
 | Table | Key | Contents |
@@ -146,6 +180,7 @@ Both are overridable via `ANALYST_MODEL` / `SCREENER_MODEL` in `backend/.env`.
 | `watchlist` | `symbol` | User's shares (seeded with the initial 12) |
 | `ai_analysis` | `(symbol, date)` | Analyst Agent result JSON — one per stock per day |
 | `ai_picks` | `date` | Screener result JSON — one per day |
+| `rag_chunks` | `id` (`doc_key` indexed) | Chat's RAG corpus: flattened research text + embedding |
 
 In-process caches (not persisted): price history 10 min, analyst consensus 24 h.
 
@@ -159,6 +194,8 @@ In-process caches (not persisted): price history 10 min, analyst consensus 24 h.
 | `GET /api/stocks/{symbol}/history?period=` | Chart series (1w/1m/1y/5y) |
 | `GET /api/stocks/{symbol}/analysis[?refresh=true]` | Cached / fresh AI analysis |
 | `GET /api/picks[?refresh=true]` | Cached / fresh top-20 |
+| `POST /api/auth/login` | Credentials → JWT (the only public endpoint besides health) |
+| `POST /api/chat` | RAG-grounded chat: `{message, history}` → `{reply, sources}` |
 
 ## 6. Cost, resilience, security
 

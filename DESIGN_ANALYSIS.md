@@ -125,7 +125,39 @@ Decisions stacked to keep spend near zero on idle days:
 5. **Thinned tool payloads** (chart series capped at ~60 points) and a **12-turn
    loop limit** as a runaway guard.
 
-## 11. Secret handling
+## 11. Authentication
+
+| Option | Pros | Cons |
+|---|---|---|
+| **JWT (HS256) + env-configured credentials** ✅ | Stateless (no session store), standard Bearer flow, one dependency (PyJWT); creds live next to the other secrets in `.env` | Tokens can't be revoked before expiry (24 h TTL bounds the exposure) |
+| Session cookies + server-side sessions | Revocable | Needs session storage and CSRF handling; the SPA + Bearer pattern is simpler |
+| Users table with hashed passwords | Multi-user ready | Password management (hashing, reset flows) for an app with exactly one user |
+| OAuth (Google etc.) | No password at all | External app registration + callback plumbing — heavy for localhost |
+
+The JWT secret is auto-generated into a gitignored file so restarts don't
+invalidate sessions and nothing secret enters the repo.
+
+## 12. Chat grounding (RAG)
+
+| Option | Pros | Cons |
+|---|---|---|
+| **Embeddings in SQLite + in-process cosine search** ✅ | Zero new infrastructure; corpus is tiny (one chunk per analysis/screener run) so brute-force cosine over numpy is instant; degrades to keyword search if embeddings fail | Wouldn't scale to millions of chunks — irrelevant here |
+| Vector DB (Chroma, Qdrant, pgvector) | Scales, filters | A whole service + dependency for a corpus that fits in memory |
+| No RAG — stuff all research into the prompt | Simple | Grows unboundedly with usage; retrieval keeps the prompt small and the answer focused |
+| Agent-with-tools chat (chat calls the analyst live) | Always fresh | Minutes of latency + fresh cost per chat message; RAG over cached research answers instantly |
+
+Retrieval feeds `gpt-5-mini` together with a live watchlist snapshot, so the
+chat can answer both "what did the research say" and "where is my portfolio now".
+
+## 13. Voice input
+
+| Option | Pros | Cons |
+|---|---|---|
+| **Browser Web Speech API** ✅ | Free, zero backend, instant, built into Chrome (the user's browser) | Chrome-centric; sends audio to the browser vendor's recognizer |
+| OpenAI Whisper/transcribe API | Best accuracy, any browser | Audio upload plumbing + per-minute cost + more latency |
+| Local speech models | Private | Heavy install for a convenience feature |
+
+## 14. Secret handling
 
 The OpenAI key lives only in `backend/.env` (gitignored, verified before every
 push). `.env.example` documents the shape without the value. The key never

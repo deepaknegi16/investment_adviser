@@ -116,16 +116,46 @@ def run_agent(
                     }
                 )
         raise AgentUnavailable("Agent did not finish within the turn limit.")
-    except openai.AuthenticationError as e:
-        raise AgentUnavailable(f"OpenAI authentication failed: {e}") from e
-    except openai.RateLimitError as e:
+    except openai.OpenAIError as e:
+        raise _map_error(e) from e
+
+
+def _map_error(e: Exception) -> AgentUnavailable:
+    if isinstance(e, openai.AuthenticationError):
+        return AgentUnavailable(f"OpenAI authentication failed: {e}")
+    if isinstance(e, openai.RateLimitError):
         if getattr(e, "code", None) == "insufficient_quota":
-            raise AgentUnavailable(
+            return AgentUnavailable(
                 "The OpenAI account has no remaining credits (insufficient_quota). "
                 "Add billing/credits at platform.openai.com, then retry."
-            ) from e
-        raise AgentUnavailable("OpenAI API rate limited — try again shortly.") from e
-    except openai.APIStatusError as e:
-        raise AgentUnavailable(f"OpenAI API error ({e.status_code}): {e.message}") from e
-    except openai.APIConnectionError:
-        raise AgentUnavailable("Could not reach the OpenAI API (network error).")
+            )
+        return AgentUnavailable("OpenAI API rate limited — try again shortly.")
+    if isinstance(e, openai.APIConnectionError):
+        return AgentUnavailable("Could not reach the OpenAI API (network error).")
+    if isinstance(e, openai.APIStatusError):
+        return AgentUnavailable(f"OpenAI API error ({e.status_code}): {e.message}")
+    return AgentUnavailable(f"OpenAI request failed: {e}")
+
+
+def simple_response(
+    model: str,
+    instructions: str,
+    input_items: List[Any],
+    reasoning_effort: str = "low",
+    max_output_tokens: int = 2000,
+) -> str:
+    """One tool-less model call (used by the chat) with the same error mapping."""
+    client = _get_client()
+    try:
+        resp = client.responses.create(
+            model=model,
+            instructions=instructions,
+            input=input_items,
+            reasoning={"effort": reasoning_effort},
+            max_output_tokens=max_output_tokens,
+        )
+    except openai.OpenAIError as e:
+        raise _map_error(e) from e
+    if not resp.output_text:
+        raise AgentUnavailable("The model returned no text output.")
+    return resp.output_text

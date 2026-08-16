@@ -6,7 +6,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import market_data
+from .. import market_data, rag
 from ..agents.analyst import analyze_stock
 from ..agents.runner import AgentUnavailable
 from ..db import AiAnalysis, WatchlistItem, get_db
@@ -53,5 +53,9 @@ def analysis(symbol: str, refresh: bool = False, db: Session = Depends(get_db)):
     else:
         db.add(AiAnalysis(symbol=symbol, date=today, payload_json=json.dumps(result)))
     db.commit()
+    try:
+        rag.index_analysis(symbol, name, result)  # feed the chat's RAG index
+    except Exception:
+        pass  # indexing must never break the analysis response
     result["cached"] = False
     return result

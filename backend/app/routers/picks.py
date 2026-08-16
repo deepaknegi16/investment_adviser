@@ -6,6 +6,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from .. import rag
 from ..agents.runner import AgentUnavailable
 from ..agents.screener import screen_top_picks
 from ..db import AiPicks, get_db
@@ -36,5 +37,9 @@ def picks(refresh: bool = False, db: Session = Depends(get_db)):
     else:
         db.add(AiPicks(date=today, payload_json=json.dumps(result)))
     db.commit()
+    try:
+        rag.index_picks(result)  # feed the chat's RAG index
+    except Exception:
+        pass  # indexing must never break the picks response
     result["cached"] = False
     return result

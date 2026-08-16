@@ -3,13 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+from .auth import require_auth, router as auth_router  # noqa: E402
 from .db import init_db  # noqa: E402
-from .routers import analysis, picks, watchlist  # noqa: E402
+from .routers import analysis, chat, picks, watchlist  # noqa: E402
 
 app = FastAPI(title="Indian Stock Portfolio Adviser")
 
@@ -20,9 +21,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(watchlist.router)
-app.include_router(analysis.router)
-app.include_router(picks.router)
+# Public: login + health. Everything else requires a valid JWT.
+app.include_router(auth_router)
+protected = [Depends(require_auth)]
+app.include_router(watchlist.router, dependencies=protected)
+app.include_router(analysis.router, dependencies=protected)
+app.include_router(picks.router, dependencies=protected)
+app.include_router(chat.router, dependencies=protected)
 
 
 @app.on_event("startup")

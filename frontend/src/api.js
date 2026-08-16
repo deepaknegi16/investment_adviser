@@ -1,8 +1,23 @@
+const TOKEN_KEY = "adviser_token";
+
+export function getToken() {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token) {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
 async function request(path, options = {}) {
-  const res = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
+  const headers = { "Content-Type": "application/json" };
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(path, { headers, ...options });
+  if (res.status === 401 && !path.startsWith("/api/auth/")) {
+    setToken(null);
+    window.dispatchEvent(new Event("auth-expired"));
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -17,6 +32,8 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  login: (username, password) =>
+    request("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   watchlist: () => request("/api/watchlist"),
   addShare: (symbol, name) =>
     request("/api/watchlist", { method: "POST", body: JSON.stringify({ symbol, name }) }),
@@ -26,4 +43,6 @@ export const api = {
   analysis: (symbol, refresh = false) =>
     request(`/api/stocks/${symbol}/analysis${refresh ? "?refresh=true" : ""}`),
   picks: (refresh = false) => request(`/api/picks${refresh ? "?refresh=true" : ""}`),
+  chat: (message, history) =>
+    request("/api/chat", { method: "POST", body: JSON.stringify({ message, history }) }),
 };

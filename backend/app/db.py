@@ -4,7 +4,7 @@ from __future__ import annotations
 import datetime as dt
 from pathlib import Path
 
-from sqlalchemy import Column, DateTime, String, Text, create_engine
+from sqlalchemy import Column, DateTime, Integer, String, Text, create_engine
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 DB_PATH = Path(__file__).resolve().parent.parent / "adviser.db"
@@ -34,6 +34,19 @@ class AiPicks(Base):
     __tablename__ = "ai_picks"
     date = Column(String, primary_key=True)  # YYYY-MM-DD
     payload_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class RagChunk(Base):
+    """A retrievable chunk of AI research for the chat's RAG index."""
+
+    __tablename__ = "rag_chunks"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    doc_key = Column(String, index=True, nullable=False)  # e.g. analysis:INFY.NS:2026-08-16
+    symbol = Column(String, nullable=True)
+    date = Column(String, nullable=False)
+    text = Column(Text, nullable=False)
+    embedding = Column(Text, nullable=True)  # JSON float list; null if embedding failed
     created_at = Column(DateTime, default=dt.datetime.utcnow)
 
 
