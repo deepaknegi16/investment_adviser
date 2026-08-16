@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
+import os
 from typing import Any, Dict
 
 from .runner import run_agent
-from .tools import WEB_SEARCH_TOOL, get_price_history, get_technicals
+from .tools import FUNCTION_TOOLS, TOOL_IMPLS, WEB_SEARCH_TOOL
+
+# Deep per-stock research: full reasoning model with web search.
+ANALYST_MODEL = os.environ.get("ANALYST_MODEL", "gpt-5")
 
 ANALYSIS_SCHEMA: Dict[str, Any] = {
     "type": "object",
@@ -73,8 +76,12 @@ def analyze_stock(symbol: str, name: str) -> Dict[str, Any]:
     result = run_agent(
         system=SYSTEM,
         prompt=prompt,
-        tools=[get_technicals, get_price_history, WEB_SEARCH_TOOL],
+        tools=FUNCTION_TOOLS + [WEB_SEARCH_TOOL],
+        tool_impls=TOOL_IMPLS,
         schema=ANALYSIS_SCHEMA,
+        schema_name="stock_analysis",
+        model=ANALYST_MODEL,
+        reasoning_effort="medium",
     )
     result["symbol"] = symbol
     result["generated_at"] = dt.datetime.now().isoformat(timespec="seconds")

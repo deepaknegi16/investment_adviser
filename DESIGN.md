@@ -1,0 +1,173 @@
+# Design — Indian Stock Portfolio Adviser
+
+A personal dashboard that tracks NSE shares (prices, 1W/1M/1Y/5Y performance,
+trend status, buy/hold/sell advice) and uses **agentic AI** for per-stock news +
+predictions and a top-20 stock screener.
+
+> Everything the app outputs is informational only — **not financial advice**.
+
+## 1. System architecture
+
+```mermaid
+flowchart LR
+    subgraph Browser
+        UI[React SPA - Vite dev server :5173]
+    end
+    subgraph Backend [FastAPI backend :8000]
+        WR[watchlist router]
+        AR[analysis router]
+        PR[picks router]
+        MD[market_data service - yfinance wrapper + caches]
+        RE[recommend - rules engine]
+        AG1[Analyst Agent]
+        AG2[Screener Agent]
+        RUN[agent runner - OpenAI Responses loop]
+        DB[(SQLite adviser.db)]
+    end
+    Y[(Yahoo Finance)]
+    O[(OpenAI API - gpt-5 / gpt-5-mini + web_search)]
+
+    UI -- "/api/*" --> WR & AR & PR
+    WR --> MD --> Y
+    WR --> RE
+    AR --> AG1 --> RUN --> O
+    PR --> AG2 --> RUN
+    AG1 & AG2 -- function tools --> MD
+    AR & PR & WR --> DB
+```
+
+Three layers with a hard boundary between them:
+
+| Layer | Cost | Latency | Used for |
+|---|---|---|---|
+| **Deterministic market data** (`market_data.py` + `recommend.py`) | free | seconds | Main table: prices, returns, status color, base advice |
+| **Rules engine** (`recommend.py`) | free | instant | Status 🟢🟠🔴 + BUY MORE/HOLD/SELL from technicals + analyst consensus |
+| **Agentic AI** (`agents/`) | paid (OpenAI) | minutes | On-demand: per-stock news digest + prediction; daily top-20 screener |
+
+The main table never waits on AI; AI results are cached in SQLite per day and
+refreshed only on user request.
+
+## 2. End-to-end flow
+
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant F as React UI
+    participant B as FastAPI
+    participant Y as Yahoo Finance
+    participant O as OpenAI
+
+    Note over U,Y: Portfolio table (free, auto-refresh 60s)
+    U->>F: open dashboard
+    F->>B: GET /api/watchlist
+    B->>Y: batched 5y history + analyst consensus (cached 10m / 24h)
+    Y-->>B: closes, recommendationMean, target
+    B->>B: compute returns, SMA, RSI, status, advice
+    B-->>F: table rows
+    F-->>U: table with colors + badges
+
+    Note over U,O: Stock detail (AI on click, cached per day)
+    U->>F: click a share
+    F->>B: GET /api/stocks/{sym}/analysis
+    alt cached today
+        B-->>F: cached analysis from SQLite
+    else fresh run
+        B->>O: Analyst Agent loop (gpt-5)
+        O->>B: function calls: get_technicals / get_price_history
+        B->>Y: fetch data, return tool results
+        O->>O: built-in web_search for recent news
+        O-->>B: structured JSON: news + prediction + BUY/HOLD/SELL + reasoning
+        B->>B: cache in SQLite (symbol, date)
+        B-->>F: analysis
+    end
+    F-->>U: drawer: chart, technicals, news, prediction
+
+    Note over U,O: Top-20 picks (AI, cached per day)
+    F->>B: GET /api/picks
+    B->>Y: batch metrics for ~110 NSE large caps
+    B->>B: momentum pre-screen, keep top 30 (free)
+    B->>O: Screener Agent ranks 30 to top 20 (gpt-5-mini)
+    O-->>B: ranked picks + rationale (structured JSON)
+    B-->>F: top-20 table
+```
+
+## 3. Agentic AI system design
+
+Both agents run on a shared loop (`agents/runner.py`) built on the **OpenAI
+Responses API**:
+
+```mermaid
+flowchart TD
+    P[system instructions + task prompt] --> M{model turn}
+    M -- "function_call items" --> T[execute local tools\nget_technicals / get_price_history\nagainst yfinance layer]
+    T -- function_call_output --> M
+    M -- "web_search (built-in)" --> W[OpenAI runs the search server-side]
+    W --> M
+    M -- final message --> S[strict JSON-schema structured output]
+    S --> V[parse + validate + cache in SQLite]
+    M -- refusal / truncation / turn limit --> E[AgentUnavailable → HTTP 503 with reason]
+```
+
+Key properties:
+
+- **Tools ground every claim.** The model cannot invent prices — quantitative
+  facts come from function tools backed by the same `market_data.py` the table
+  uses; news comes from the built-in `web_search` tool with real URLs.
+- **Strict structured outputs.** The final answer is forced to a JSON schema
+  (`strict: true`), so the frontend renders typed fields, never free text.
+- **Bounded loop.** Max 12 model turns per run; tool errors are returned to the
+  model as JSON so it can adapt; quota/rate/auth failures map to clear 503s.
+
+### Agents
+
+| Agent | Trigger | Tools | Output |
+|---|---|---|---|
+| **Analyst** | Click a share / "Refresh AI analysis" | `get_technicals`, `get_price_history`, `web_search` | 3–6 sourced news items, short-term (1–3 mo) + long-term (1–3 yr) prediction with confidence, BUY/HOLD/SELL + reasoning |
+| **Screener** | Top-20 table load / "Refresh picks" | `get_technicals`, `web_search` (sparingly) | Ranked top-20 with one-line rationale each + a market note |
+
+The screener is **hybrid**: a free deterministic momentum/trend pre-screen over
+the ~110-name universe (`nifty100.json`) selects 30 candidates; the model only
+ranks those 30 — AI judgment where it adds value, arithmetic in code.
+
+### OpenAI model usage
+
+| Model | Where | Purpose | Why this model |
+|---|---|---|---|
+| **`gpt-5`** (reasoning effort *medium*) | Analyst Agent | Deep single-stock research: interpret technicals, weigh news, produce prediction + call | Highest-quality reasoning for the output the user acts on; runs at most once per stock per day |
+| **`gpt-5-mini`** (reasoning effort *low*) | Screener Agent | Rank 30 pre-scored candidates into a top-20 with rationale | Bulk comparative task over already-computed metrics — mini quality suffices at a fraction of the cost |
+| **`web_search`** (built-in tool) | Both agents | Recent news from reliable sources, with URLs | Server-side; no scraping infra, results carry citations |
+
+Both are overridable via `ANALYST_MODEL` / `SCREENER_MODEL` in `backend/.env`.
+
+## 4. Data model (SQLite)
+
+| Table | Key | Contents |
+|---|---|---|
+| `watchlist` | `symbol` | User's shares (seeded with the initial 12) |
+| `ai_analysis` | `(symbol, date)` | Analyst Agent result JSON — one per stock per day |
+| `ai_picks` | `date` | Screener result JSON — one per day |
+
+In-process caches (not persisted): price history 10 min, analyst consensus 24 h.
+
+## 5. API surface
+
+| Endpoint | Behavior |
+|---|---|
+| `GET /api/watchlist` | Full table (prices, returns, status, advice) |
+| `POST /api/watchlist` / `DELETE /api/watchlist/{symbol}` | Add / remove a share |
+| `GET /api/search?q=` | NSE symbol lookup for the add dialog |
+| `GET /api/stocks/{symbol}/history?period=` | Chart series (1w/1m/1y/5y) |
+| `GET /api/stocks/{symbol}/analysis[?refresh=true]` | Cached / fresh AI analysis |
+| `GET /api/picks[?refresh=true]` | Cached / fresh top-20 |
+
+## 6. Cost, resilience, security
+
+- **AI spend is bounded by design:** per-day caching, the free pre-screen, a
+  cheaper model for the bulk task, low reasoning effort where quality allows,
+  thinned tool payloads (≤ ~60 chart points), and a hard turn limit.
+- **Yahoo fragility is contained:** every Yahoo call lives in `market_data.py`
+  behind caches; if yfinance breaks, only that module changes.
+- **Secrets:** `OPENAI_API_KEY` lives in `backend/.env`, which is gitignored and
+  never appears in code, docs, or the repo.
+- **Degradation:** without a key (or with an out-of-credit account) the entire
+  market-data experience still works; AI panels show the specific reason.

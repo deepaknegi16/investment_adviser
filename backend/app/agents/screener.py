@@ -10,12 +10,16 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, List
 
 from .. import market_data
 from .runner import run_agent
-from .tools import WEB_SEARCH_TOOL, get_technicals
+from .tools import FUNCTION_TOOLS, TOOL_IMPLS, WEB_SEARCH_TOOL
+
+# Bulk ranking over pre-screened candidates: smaller, cheaper reasoning model.
+SCREENER_MODEL = os.environ.get("SCREENER_MODEL", "gpt-5-mini")
 
 UNIVERSE_PATH = Path(__file__).resolve().parent.parent / "nifty100.json"
 
@@ -100,9 +104,13 @@ def screen_top_picks() -> Dict[str, Any]:
     result = run_agent(
         system=SYSTEM,
         prompt=prompt,
-        tools=[get_technicals, WEB_SEARCH_TOOL],
+        tools=FUNCTION_TOOLS + [WEB_SEARCH_TOOL],
+        tool_impls=TOOL_IMPLS,
         schema=PICKS_SCHEMA,
-        max_tokens=20000,
+        schema_name="top_picks",
+        model=SCREENER_MODEL,
+        reasoning_effort="low",
+        max_output_tokens=20000,
     )
     # Attach live table metrics to each pick for display.
     metrics_by_symbol = {c["symbol"]: c for c in candidates}
