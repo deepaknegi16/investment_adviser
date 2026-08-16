@@ -8,6 +8,29 @@ actually does. Read alongside [AGENTIC_AI_DESIGN.md](AGENTIC_AI_DESIGN.md).
 interview answers follow the shape *concept → how this project does it → the
 trade-off I accepted*.
 
+The diagrams below are deliberately simple — **practice drawing each one on
+paper in under a minute**; being able to whiteboard the architecture unprompted
+is worth more than memorizing any answer.
+
+---
+
+## 0. The 60-second pitch (open with this when asked "tell me about the project")
+
+> "I built a stock adviser with a three-layer design: a deterministic layer
+> computes prices and technical indicators in plain Python; a rules engine
+> turns those into an explainable buy/hold/sell baseline; and an agentic AI
+> layer does what code can't — an Analyst Agent that researches a stock
+> through function tools and live Google-Search grounding, and a screener that
+> ranks pre-scored candidates. Everything the agents produce feeds a RAG index
+> — SQLite plus in-process cosine search over Gemini embeddings — that powers
+> a chat with voice input, grounded in the app's own research plus files the
+> user uploads. I run it entirely on free tiers, which forced real engineering:
+> per-model quota-bucket fallbacks, cross-provider degradation to Groq, and
+> per-day caching. And it's measured — recall@5/MRR on an auto-generated
+> golden set and LLM-as-judge faithfulness, surfaced in a metrics API and UI."
+
+Sixty seconds, and it plants hooks for every topic *you* want them to ask about.
+
 ---
 
 ## 1. Agentic AI fundamentals
@@ -20,6 +43,21 @@ research behavior, not just the final text. In this project the Analyst Agent
 decides for itself whether to pull technicals, price history, or both before
 writing its notes.
 
+```mermaid
+flowchart LR
+    subgraph oneshot [Plain LLM call]
+        P1[prompt + pasted data] --> M1[model] --> A1[answer\nfrom given data + stale training]
+    end
+    subgraph agent [Agent]
+        P2[task] --> M2[model]
+        M2 -- decides to call --> T[tool] -- result --> M2
+        M2 -- when satisfied --> A2[grounded answer]
+    end
+```
+
+*Likely follow-ups:* "who decides which tool runs?" (the model — the host only
+executes), "what stops infinite loops?" (turn cap — see below).
+
 **Q. Explain function calling. What actually travels over the wire?**
 We send the model *function declarations* — name, description, JSON-schema
 parameters. The model replies not with text but a structured `function_call`
@@ -28,6 +66,21 @@ the real Python function and appends a `function_response` part with the JSON
 result; the model reads it and continues. The model never executes anything —
 it only *requests*; the host owns execution. (Code: `agents/tools.py`,
 `runner.tool_research()`.)
+
+```mermaid
+sequenceDiagram
+    participant App as My backend
+    participant M as Model
+    App->>M: task + function declarations (name, description, JSON-schema params)
+    M-->>App: function_call {name: get_technicals, args: {symbol: INFY.NS}}
+    App->>App: run the real Python function
+    App->>M: function_response {price, RSI, SMAs, consensus…}
+    M-->>App: (more calls, or) final text
+```
+
+*Likely follow-up:* "why does the model never execute code itself?" — security
+and control: the host can validate args, gate side effects, and log every call;
+the model only ever proposes.
 
 **Q. How do you stop an agent loop from running forever?**
 A hard turn cap — 8 tool turns per research phase here. Also: tool *errors* are
@@ -77,6 +130,21 @@ schema combines notes + news + source list into `{news[], prediction{},
 recommendation, reasoning}`. The result is cached in SQLite and flattened into
 the RAG index so the chat can use it.
 
+```mermaid
+flowchart LR
+    U[user clicks stock] --> C{cached\ntoday?}
+    C -- yes --> UI[render - 0 tokens]
+    C -- no --> P1[1 tool research\nfunction-calling loop]
+    P1 --> P2[2 grounded news\nGoogle Search + citations]
+    P2 --> P3[3 synthesis\nJSON schema]
+    P3 --> DB[(cache + RAG index)] --> UI
+    P2 -. quota gone .-> P3
+```
+
+*Likely follow-ups:* "why three phases instead of one loop?" (provider
+constraint turned into separation of concerns), "what if phase 2 fails?" (the
+dotted edge — degrade to technicals-only, never invent news).
+
 **Q. Why two different system prompts inside one agent run?**
 Phase 1's prompt forbids a recommendation ("notes only"); phase 3's prompt
 governs judgment. Separating *gather* from *judge* prevents the model from
@@ -113,6 +181,26 @@ two are deliberately shown side by side ("base advice" vs "AI advice").
 ---
 
 ## 3. RAG
+
+The one diagram to master — RAG is two pipelines meeting at an index:
+
+```mermaid
+flowchart TD
+    subgraph write [Index path - at write time]
+        AG[agent runs] --> F[flatten to text]
+        UP[file uploads] --> CH[chunk ~1400 chars\non paragraph bounds]
+        F --> E1[embed]
+        CH --> E1
+        E1 --> IDX[(rag_chunks in SQLite\ntext + 3072-dim vector)]
+    end
+    subgraph read [Query path - per question]
+        Q[question] --> E2[embed query]
+        E2 --> SIM[cosine top-5\nnumpy, in-process]
+        IDX --> SIM
+        SIM --> CTX[prompt = chunks + live watchlist snapshot]
+        CTX --> LLM[flash-lite] --> ANS[answer + cited sources]
+    end
+```
 
 **Q. What is RAG and why use it here instead of fine-tuning or a huge prompt?**
 Retrieval-Augmented Generation: store knowledge outside the model, retrieve
@@ -184,6 +272,16 @@ retrieved text as untrusted data in the prompt template.
 
 ## 4. Evaluation & metrics
 
+```mermaid
+flowchart LR
+    G[golden set\nauto-generated from corpus] --> R[retrieval eval\nrecall@5 · MRR]
+    G --> A[real chat answers a sample]
+    A --> J[LLM judge\nsees only retrieved context]
+    J --> FA[faithfulness 1-5\n+ unsupported-claims list]
+    J --> RE[relevance 1-5]
+    R & FA & RE --> S[(eval_runs → /api/metrics → UI)]
+```
+
 **Q. How do you evaluate a RAG system? What do you measure?**
 Two halves. **Retrieval**: did the right chunk surface? — recall@k (correct
 source in the top k) and MRR (mean reciprocal rank: 1/rank averaged, so rank 1
@@ -236,6 +334,19 @@ per model** — on a 429 we hop to a different Gemini model's quota bucket, then
 wait out the per-minute window, then cross to Groq (a different provider's
 independent quota) for chat/screener; and finally graceful degradation
 (yesterday's cached result labeled "cached", or a clear human error).
+
+```mermaid
+flowchart TD
+    A[Gemini primary model] -- 429/503 --> B[other Gemini model\nseparate quota bucket]
+    B -- still failing --> C[wait 40s, retry both]
+    C -- still failing --> D[Groq - other provider\nchat & screener only]
+    D -- unavailable --> E[yesterday's cache\nlabeled 'cached']
+    E -.-> F[clear human error message\nprice table still works]
+```
+
+*Likely follow-up:* "how did you know quotas are per model?" — empirically:
+during live testing one model 429'd while another answered instantly; that
+observation became the bucket-hopping ladder.
 
 **Q. Why doesn't the analyst fall back to Groq like the chat does?**
 Groq has no web search. A news digest from a model that can't search would be
@@ -331,7 +442,71 @@ gate so prompt changes can't silently degrade faithfulness.
 
 ---
 
-## 8. Questions to ask *them* (shows depth)
+## 8. War stories, STAR-formatted (for "tell me about a hard problem")
+
+**Story 1 — "Available" ≠ callable.**
+*Situation:* switched the AI layer to Gemini's free tier; the models list API
+showed `gemini-2.5-flash`. *Task:* get the analyst pipeline running. *Action:*
+first call returned 404 "no longer available to new users" — so I stopped
+trusting the list API, probed candidates with real `generate_content` calls,
+and discovered the account's actual callable set (the 3.x family). *Result:*
+switched defaults to stable 3.5 models, kept `-latest` aliases as env options,
+and encoded the lesson: verify capability with a real call, not metadata.
+
+**Story 2 — The invisible second quota.**
+*Situation:* mid-testing, every analyst run started failing with 429 — while
+plain generation calls worked fine. *Task:* find which limit we were actually
+hitting. *Action:* isolated the failure to *grounded* calls only; searched
+calls have their own small daily budget separate from generation. *Result:*
+built graceful degradation — the analyst completes with a technicals-only
+analysis and an empty news list instead of failing — and the quota self-heals
+at the daily reset. Users get a slightly weaker answer, never an error page.
+
+**Story 3 — The judge that was "wrong" correctly.**
+*Situation:* first larger eval run scored one answer 4/5 on faithfulness.
+*Task:* decide whether that's a hallucination. *Action:* read the judge's
+unsupported-claims list — the only flagged claim was the not-financial-advice
+disclaimer, which our chat prompt *requires* the model to add. *Result:* a
+perfect example of why judge scores need auditable evidence, not just numbers
+— and a documented choice: keep the strict judge, read the claims list before
+reacting to sub-5 scores.
+
+---
+
+## 9. Red-flag answers to avoid
+
+| Interviewer hears | Why it hurts | Say instead |
+|---|---|---|
+| "I used LangChain/framework X for the agent" (when asked *how it works*) | Framework name-dropping without mechanics reads as surface knowledge | Explain the loop: declarations → function_call → execute → function_response → repeat |
+| "The vector DB handles retrieval" | You outsourced the one thing they're probing | Embeddings + cosine similarity, then *why* your storage choice fits your scale |
+| "My eval scores were perfect" (full stop) | Sounds like you don't understand your own metrics | "Perfect at small scale — it's a baseline; here's what would make the numbers meaningful" |
+| "The model sometimes hallucinates, that's just how LLMs are" | Fatalism where engineering exists | Name your layers: grounding, schema constraints, citation display, judge-measured faithfulness |
+| "I'd add a vector DB / Kubernetes / microservices to scale" (unprompted) | Complexity as a reflex | Name the trigger that flips each decision ("~100k chunks is where the numpy scan stops being free") |
+| "Chunk size? I used the default" | The most-probed RAG detail, unowned | 1,400 chars on paragraph boundaries — and the token-budget arithmetic behind it |
+
+---
+
+## 10. Mock drill — answer these cold, out loud (no notes)
+
+1. Whiteboard the full path from "user clicks a stock" to "drawer renders,"
+   marking every model call and every cache.
+2. Your retrieval is perfect but users say chat answers are wrong. Which
+   metric distinguishes the failure, and what do you check first?
+3. Gemini bans your account tomorrow morning. What breaks, what degrades, and
+   what's your one-day recovery plan?
+4. An interviewer claims your keyword fallback makes embeddings pointless.
+   Defend the hybrid, including when the fallback actually fires.
+5. Sketch how you'd extend the evaluator to score the *agent's tool-call
+   trajectory*, not just its final answer.
+6. A pick and your watchlist show conflicting advice for the same stock. Walk
+   through why that can happen and why the design surfaces both.
+
+If any of these takes you more than two minutes of fumbling, re-read the
+matching section above and [AGENTIC_AI_DESIGN.md](AGENTIC_AI_DESIGN.md).
+
+---
+
+## 11. Questions to ask *them* (shows depth)
 
 - How do you evaluate agent behavior beyond final-answer accuracy — do you score the tool-call trajectory?
 - How do you handle prompt injection through retrieved or user-supplied documents?
