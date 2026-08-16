@@ -25,7 +25,7 @@ flowchart LR
         DB[(SQLite adviser.db)]
     end
     Y[(Yahoo Finance)]
-    O[(Gemini API free tier - 2.5 Flash / Flash-Lite + Google Search)]
+    O[(Gemini API free tier - 3.x Flash / Flash-Lite + Google Search)]
     G[(Groq free tier - Llama 3.3 70B fallback)]
 
     UI -- "/api/*" --> WR & AR & PR
@@ -74,7 +74,7 @@ sequenceDiagram
     alt cached today
         B-->>F: cached analysis from SQLite
     else fresh run
-        B->>O: Analyst pipeline (gemini-2.5-flash)
+        B->>O: Analyst pipeline (gemini-3.5-flash)
         O->>B: phase 1 - function calls: get_technicals / get_price_history
         B->>Y: fetch data, return tool results
         O->>O: phase 2 - Google-Search-grounded news pass
@@ -89,7 +89,7 @@ sequenceDiagram
     F->>B: GET /api/picks
     B->>Y: batch metrics for ~110 NSE large caps
     B->>B: momentum pre-screen, keep top 30 (free)
-    B->>O: Screener ranks 30 to top 20 (gemini-2.5-flash-lite, Groq fallback)
+    B->>O: Screener ranks 30 to top 20 (gemini-3.5-flash-lite, Groq fallback)
     O-->>B: ranked picks + rationale (structured JSON)
     B-->>F: top-20 table
 ```
@@ -125,8 +125,8 @@ Key properties:
 
 | Agent | Trigger | Pipeline | Output |
 |---|---|---|---|
-| **Analyst** (`gemini-2.5-flash`) | Click a share / "Refresh AI analysis" | tool research → grounded news → synthesis | 3–6 sourced news items, short-term (1–3 mo) + long-term (1–3 yr) prediction with confidence, BUY/HOLD/SELL + reasoning |
-| **Screener** (`gemini-2.5-flash-lite`, Groq fallback) | Top-20 table load / "Refresh picks" | synthesis only (candidates carry their metrics) | Ranked top-20 with one-line rationale each + a market note |
+| **Analyst** (`gemini-3.5-flash`) | Click a share / "Refresh AI analysis" | tool research → grounded news → synthesis | 3–6 sourced news items, short-term (1–3 mo) + long-term (1–3 yr) prediction with confidence, BUY/HOLD/SELL + reasoning |
+| **Screener** (`gemini-3.5-flash-lite`, Groq fallback) | Top-20 table load / "Refresh picks" | synthesis only (candidates carry their metrics) | Ranked top-20 with one-line rationale each + a market note |
 
 The screener is **hybrid**: a free deterministic momentum/trend pre-screen over
 the ~110-name universe (`nifty100.json`) selects 30 candidates; the model only
@@ -136,8 +136,8 @@ ranks those 30 — AI judgment where it adds value, arithmetic in code.
 
 | Model | Where | Purpose | Why this model |
 |---|---|---|---|
-| **`gemini-2.5-flash`** | Analyst Agent | Deep single-stock research: tool loop, grounded news, prediction + call | Best free-tier model that has Google Search grounding — the analyst's core need |
-| **`gemini-2.5-flash-lite`** | Screener Agent, chat | Rank pre-scored candidates; RAG chat turns | Highest free-tier daily quota; the tasks are mechanical/conversational |
+| **`gemini-3.5-flash`** | Analyst Agent | Deep single-stock research: tool loop, grounded news, prediction + call | Best free-tier model that has Google Search grounding — the analyst's core need |
+| **`gemini-3.5-flash-lite`** | Screener Agent, chat | Rank pre-scored candidates; RAG chat turns | Highest free-tier daily quota; the tasks are mechanical/conversational |
 | **`gemini-embedding-001`** | RAG index | Embed research chunks + chat queries | Free (10M tokens/min) |
 | **Groq `llama-3.3-70b-versatile`** | Fallback | Screener synthesis + chat when Gemini is rate-limited | Independent free quota; fast; no web search, so the analyst's news phase stays Gemini-only |
 
@@ -164,7 +164,7 @@ flowchart LR
     end
     E --> R[cosine top-5 retrieval\nkeyword fallback if embeddings unavailable]
     Index --> R
-    R --> C[gemini-2.5-flash-lite chat turn (Groq fallback)\ncontext = retrieved research + live watchlist snapshot]
+    R --> C[gemini-3.5-flash-lite chat turn (Groq fallback)\ncontext = retrieved research + live watchlist snapshot]
     C --> Ans[answer + grounded-in sources shown in UI]
 ```
 
