@@ -5,12 +5,32 @@ import { AdviceBadge, Pct } from "./PortfolioTable.jsx";
 
 const STATUS_LABEL = { green: "UPTREND", red: "DOWNTREND", orange: "MIXED" };
 
-export default function StockDrawer({ share, onClose, onRemove }) {
+function scoreClass(score) {
+  return score > 0 ? "pos" : score < 0 ? "neg" : "muted";
+}
+
+export default function StockDrawer({ share, onClose, onRemove, onWatchlistChange }) {
+  // `share` may be a full watchlist row, or just {symbol, name, pick} from the
+  // top-20 table — in that case fetch the full summary.
+  const hasMetrics = share.price !== undefined;
+  const [details, setDetails] = useState(hasMetrics ? share : null);
+  const [detailsError, setDetailsError] = useState(null);
   const [period, setPeriod] = useState("1y");
   const [chart, setChart] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [aiLoading, setAiLoading] = useState(true);
   const [aiError, setAiError] = useState(null);
+  const [showLogic, setShowLogic] = useState(false);
+  const [adding, setAdding] = useState(false);
+
+  useEffect(() => {
+    if (share.price !== undefined) {
+      setDetails(share);
+    } else {
+      setDetails(null);
+      api.summary(share.symbol).then(setDetails).catch((e) => setDetailsError(e.message));
+    }
+  }, [share]);
 
   useEffect(() => {
     setChart(null);
@@ -35,6 +55,22 @@ export default function StockDrawer({ share, onClose, onRemove }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [share.symbol]);
 
+  const addToWatchlist = async () => {
+    setAdding(true);
+    try {
+      await api.addShare(share.symbol, details?.name || share.name);
+      setDetails((d) => (d ? { ...d, in_watchlist: true } : d));
+      onWatchlistChange?.();
+    } catch {
+      /* keep drawer usable */
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const logic = details?.advice_logic;
+  const inWatchlist = details?.in_watchlist !== false; // watchlist rows omit the flag
+
   return (
     <>
       <div className="drawer-backdrop" onClick={onClose} />
@@ -42,22 +78,64 @@ export default function StockDrawer({ share, onClose, onRemove }) {
         <div className="drawer-head">
           <div>
             <h2>
-              {share.name} <span className="share-symbol">{share.symbol}</span>
+              {details?.name || share.name} <span className="share-symbol">{share.symbol}</span>
             </h2>
-            <div className="price-line">
-              ₹{share.price?.toLocaleString("en-IN")}{" "}
-              <span style={{ fontSize: 15 }}>
-                <Pct value={share.day_change_pct} /> today
-              </span>
-            </div>
-            <div>
-              <span className={`dot ${share.status}`} />{" "}
-              <b>{STATUS_LABEL[share.status]}</b>
-              {"  ·  "}Base advice: <AdviceBadge advice={share.advice} />
-            </div>
+            {detailsError ? (
+              <div className="error-banner">{detailsError}</div>
+            ) : !details ? (
+              <div className="muted">Loading data…</div>
+            ) : (
+              <>
+                <div className="price-line">
+                  ₹{details.price?.toLocaleString("en-IN")}{" "}
+                  <span style={{ fontSize: 15 }}>
+                    <Pct value={details.day_change_pct} /> today
+                  </span>
+                </div>
+                <div>
+                  <span className={`dot ${details.status}`} />{" "}
+                  <b>{STATUS_LABEL[details.status]}</b>
+                  {"  ·  "}Base advice: <AdviceBadge advice={details.advice} />{" "}
+                  {logic && (
+                    <button className="link-btn" onClick={() => setShowLogic((v) => !v)}>
+                      {showLogic ? "hide logic" : "why?"}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
           <button className="close-btn" onClick={onClose}>✕</button>
         </div>
+
+        {share.pick && (
+          <div className="mini-panel pick-panel">
+            <h3>🏆 AI screener pick #{share.pick.rank}</h3>
+            <p style={{ margin: 0 }}>
+              <AdviceBadge advice={share.pick.recommendation} /> {share.pick.rationale}
+            </p>
+          </div>
+        )}
+
+        {showLogic && logic && (
+          <div className="mini-panel" style={{ marginTop: 10 }}>
+            <h3>Why this advice</h3>
+            {logic.factors.map((f, i) => (
+              <div className="logic-item" key={i}>
+                <span className={`logic-score ${scoreClass(f.score)}`}>
+                  {f.score > 0 ? `+${f.score}` : f.score}
+                </span>
+                <span>
+                  <b>{f.factor}:</b> {f.detail}
+                </span>
+              </div>
+            ))}
+            <p className="muted" style={{ marginBottom: 0 }}>
+              Total score {logic.blended_score > 0 ? "+" : ""}{logic.blended_score}
+              {" — "}{logic.rule}
+            </p>
+          </div>
+        )}
 
         <div className="period-tabs">
           {["1w", "1m", "1y", "5y"].map((p) => (
@@ -75,24 +153,28 @@ export default function StockDrawer({ share, onClose, onRemove }) {
         <div className="panel-grid">
           <div className="mini-panel">
             <h3>Technicals</h3>
-            <dl>
-              <div className="kv"><dt>SMA 50</dt><dd>{share.sma50 ?? "—"}</dd></div>
-              <div className="kv"><dt>SMA 200</dt><dd>{share.sma200 ?? "—"}</dd></div>
-              <div className="kv"><dt>RSI (14)</dt><dd>{share.rsi ?? "—"}</dd></div>
-              <div className="kv"><dt>vs 52-wk high</dt><dd><Pct value={share.pct_from_high52} /></dd></div>
-              <div className="kv">
-                <dt>Analyst consensus</dt>
-                <dd>
-                  {share.consensus?.mean
-                    ? `${share.consensus.mean} (${share.consensus.label || "n/a"})`
-                    : "—"}
-                </dd>
-              </div>
-              <div className="kv">
-                <dt>Target price</dt>
-                <dd>{share.consensus?.target ? `₹${share.consensus.target}` : "—"}</dd>
-              </div>
-            </dl>
+            {details ? (
+              <dl>
+                <div className="kv"><dt>SMA 50</dt><dd>{details.sma50 ?? "—"}</dd></div>
+                <div className="kv"><dt>SMA 200</dt><dd>{details.sma200 ?? "—"}</dd></div>
+                <div className="kv"><dt>RSI (14)</dt><dd>{details.rsi ?? "—"}</dd></div>
+                <div className="kv"><dt>vs 52-wk high</dt><dd><Pct value={details.pct_from_high52} /></dd></div>
+                <div className="kv">
+                  <dt>Analyst consensus</dt>
+                  <dd>
+                    {details.consensus?.mean
+                      ? `${details.consensus.mean} (${details.consensus.label || "n/a"})`
+                      : "—"}
+                  </dd>
+                </div>
+                <div className="kv">
+                  <dt>Target price</dt>
+                  <dd>{details.consensus?.target ? `₹${details.consensus.target}` : "—"}</dd>
+                </div>
+              </dl>
+            ) : (
+              <div className="muted">Loading…</div>
+            )}
           </div>
 
           <div className="mini-panel">
@@ -144,9 +226,15 @@ export default function StockDrawer({ share, onClose, onRemove }) {
           <button className="ghost" onClick={() => loadAnalysis(true)} disabled={aiLoading}>
             ↻ Refresh AI analysis
           </button>
-          <button className="danger" onClick={() => onRemove(share.symbol)}>
-            🗑 Remove from watchlist
-          </button>
+          {inWatchlist ? (
+            <button className="danger" onClick={() => onRemove(share.symbol)}>
+              🗑 Remove from watchlist
+            </button>
+          ) : (
+            <button onClick={addToWatchlist} disabled={adding}>
+              {adding ? "Adding…" : "＋ Add to watchlist"}
+            </button>
+          )}
         </div>
         <p className="disclaimer">⚠ AI-generated. Not financial advice.</p>
       </div>

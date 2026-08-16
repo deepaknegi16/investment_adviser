@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { AdviceBadge, Pct } from "./PortfolioTable.jsx";
 
-export default function PicksTable() {
+export default function PicksTable({ onSelect }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -54,7 +54,7 @@ export default function PicksTable() {
               </thead>
               <tbody>
                 {data.picks.map((p) => (
-                  <tr key={p.symbol} className="static">
+                  <tr key={p.symbol} onClick={() => onSelect?.(p)} title="Click for full data + reasoning">
                     <td>{p.rank}</td>
                     <td style={{ textAlign: "left" }}>
                       <span className="share-name">{p.name}</span>

@@ -38,6 +38,7 @@ def get_watchlist(db: Session = Depends(get_db)):
             **m,
             "status": recommend.status_color(m),
             "advice": rec["advice"],
+            "advice_logic": rec["logic"],
             "consensus": consensus,
         })
     return {"shares": shares}

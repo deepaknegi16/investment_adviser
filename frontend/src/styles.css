@@ -240,3 +240,16 @@ button.danger { background: transparent; color: var(--red); border: 1px solid va
   display: flex; justify-content: space-between; align-items: center;
   padding: 3px 0;
 }
+
+/* ---------- advice logic ---------- */
+.link-btn {
+  background: none; border: none; color: var(--accent); font-size: 12px;
+  padding: 0 4px; text-decoration: underline; cursor: pointer;
+}
+.logic-item {
+  display: flex; gap: 8px; padding: 4px 0; align-items: baseline;
+  border-top: 1px solid var(--border); font-size: 13px;
+}
+.logic-item:first-of-type { border-top: none; }
+.logic-score { font-weight: 700; min-width: 28px; text-align: right; }
+.pick-panel { margin-top: 10px; border-color: rgba(245, 158, 11, 0.4); }

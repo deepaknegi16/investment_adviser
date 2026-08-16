@@ -3,15 +3,54 @@ from __future__ import annotations
 import datetime as dt
 import json
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import market_data, rag
+from .. import market_data, rag, recommend
 from ..agents.analyst import analyze_stock
 from ..agents.runner import AgentUnavailable
 from ..db import AiAnalysis, WatchlistItem, get_db
 
 router = APIRouter(prefix="/api/stocks")
+
+_UNIVERSE_PATH = Path(__file__).resolve().parent.parent / "nifty100.json"
+
+
+def _resolve_name(symbol: str, db: Session) -> str:
+    item = db.get(WatchlistItem, symbol)
+    if item:
+        return item.name
+    try:
+        for entry in json.loads(_UNIVERSE_PATH.read_text()):
+            if entry["symbol"] == symbol:
+                return entry["name"]
+    except Exception:
+        pass
+    return symbol.replace(".NS", "")
+
+
+@router.get("/{symbol}/summary")
+def summary(symbol: str, db: Session = Depends(get_db)):
+    """Full metrics + explainable advice for any NSE symbol (watchlist or not)."""
+    symbol = symbol.upper()
+    closes = market_data.get_closes([symbol]).get(symbol)
+    if closes is None or closes.empty:
+        raise HTTPException(404, f"No price data for {symbol}.")
+    m = market_data.compute_metrics(closes)
+    consensus = market_data.get_consensus(symbol)
+    rec = recommend.recommendation(m, consensus.get("mean"))
+    return {
+        "symbol": symbol,
+        "name": _resolve_name(symbol, db),
+        **m,
+        "status": recommend.status_color(m),
+        "advice": rec["advice"],
+        "advice_logic": rec["logic"],
+        "consensus": consensus,
+        "in_watchlist": db.get(WatchlistItem, symbol) is not None,
+    }
 
 
 @router.get("/{symbol}/history")
@@ -40,8 +79,7 @@ def analysis(symbol: str, refresh: bool = False, db: Session = Depends(get_db)):
             payload["cached"] = cached.date != today
             return payload
 
-    item = db.get(WatchlistItem, symbol)
-    name = item.name if item else symbol.replace(".NS", "")
+    name = _resolve_name(symbol, db)
     try:
         result = analyze_stock(symbol, name)
     except AgentUnavailable as e:

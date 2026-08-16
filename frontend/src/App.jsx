@@ -91,7 +91,15 @@ export default function App() {
         </div>
       </div>
 
-      <PicksTable />
+      <PicksTable
+        onSelect={(p) =>
+          setSelected({
+            symbol: p.symbol,
+            name: p.name,
+            pick: { rank: p.rank, recommendation: p.recommendation, rationale: p.rationale },
+          })
+        }
+      />
 
       <p className="disclaimer">
         ⚠ Market data via Yahoo Finance (~15 min delayed). Recommendations and predictions are
@@ -103,6 +111,7 @@ export default function App() {
           share={selected}
           onClose={() => setSelected(null)}
           onRemove={handleRemove}
+          onWatchlistChange={loadWatchlist}
         />
       )}
       {showAdd && <AddShareDialog onAdd={handleAdd} onClose={() => setShowAdd(false)} />}

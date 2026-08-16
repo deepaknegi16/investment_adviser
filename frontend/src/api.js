@@ -40,6 +40,7 @@ export const api = {
   removeShare: (symbol) => request(`/api/watchlist/${symbol}`, { method: "DELETE" }),
   search: (q) => request(`/api/search?q=${encodeURIComponent(q)}`),
   history: (symbol, period) => request(`/api/stocks/${symbol}/history?period=${period}`),
+  summary: (symbol) => request(`/api/stocks/${symbol}/summary`),
   analysis: (symbol, refresh = false) =>
     request(`/api/stocks/${symbol}/analysis${refresh ? "?refresh=true" : ""}`),
   picks: (refresh = false) => request(`/api/picks${refresh ? "?refresh=true" : ""}`),
