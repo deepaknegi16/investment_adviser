@@ -12,6 +12,23 @@ The diagrams below are deliberately simple — **practice drawing each one on
 paper in under a minute**; being able to whiteboard the architecture unprompted
 is worth more than memorizing any answer.
 
+### Start here — the priority study path
+
+Most interviews are won by a handful of things. Practice in this order:
+
+| Priority | What | Where | Time |
+|---|---|---|---|
+| 1 | **The 60-second pitch**, out loud, until it's smooth | §0 | 15 min |
+| 2 | **The RAG dual-path diagram** — draw it from memory | §3, first diagram | 10 min |
+| 3 | **The analyst pipeline diagram** + its two follow-ups | §2, first diagram | 10 min |
+| 4 | The chunking answer (1,400 chars + the why) — the most-probed RAG detail | §3 | 5 min |
+| 5 | One STAR war story, told out loud in ~90 seconds | §8 | 10 min |
+| 6 | The **mock drill**, cold | §10 | 20 min |
+| 7 | Everything else — rapid-fire table last, night before | §7 | — |
+
+If you only have one evening: do 1–3. If you have a week: one section per day,
+and re-run the mock drill (§10) at the end until nothing takes over two minutes.
+
 ---
 
 ## 0. The 60-second pitch (open with this when asked "tell me about the project")
