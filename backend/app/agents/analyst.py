@@ -10,11 +10,11 @@ import datetime as dt
 import os
 from typing import Any, Dict
 
-from .runner import structured_synthesis, tool_research, web_research
+from .runner import AgentUnavailable, structured_synthesis, tool_research, web_research
 from .tools import FUNCTION_DECLS, TOOL_IMPLS
 
 # Deep per-stock research: best free-tier Gemini model with search grounding.
-ANALYST_MODEL = os.environ.get("ANALYST_MODEL", "gemini-2.5-flash")
+ANALYST_MODEL = os.environ.get("ANALYST_MODEL", "gemini-3.5-flash")
 
 ANALYSIS_SCHEMA: Dict[str, Any] = {
     "type": "object",
@@ -81,15 +81,25 @@ def analyze_stock(symbol: str, name: str) -> Dict[str, Any]:
         tool_impls=TOOL_IMPLS,
     )
 
-    news_text, sources = web_research(
-        model=ANALYST_MODEL,
-        prompt=(
-            f"Find recent news (prefer the last 30 days, today is {today}) about "
-            f"{name} (NSE: {symbol.replace('.NS', '')}) — quarterly results, order "
-            f"wins, regulatory events, management changes, and sector developments. "
-            f"Summarize each item with its source and date."
-        ),
-    )
+    try:
+        news_text, sources = web_research(
+            model=ANALYST_MODEL,
+            prompt=(
+                f"Find recent news (prefer the last 30 days, today is {today}) about "
+                f"{name} (NSE: {symbol.replace('.NS', '')}) — quarterly results, order "
+                f"wins, regulatory events, management changes, and sector developments. "
+                f"Summarize each item with its source and date."
+            ),
+        )
+    except AgentUnavailable:
+        # The free search-grounding quota is separate and small — degrade to a
+        # technicals-only analysis rather than failing the whole run.
+        news_text, sources = (
+            "(News search is unavailable right now — daily free search quota "
+            "reached. Base the analysis on the quantitative research only and "
+            "return an empty news list.)",
+            [],
+        )
     source_lines = "\n".join(f"- {s['title']}: {s['url']}" for s in sources) or "(none)"
 
     result = structured_synthesis(

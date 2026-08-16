@@ -18,7 +18,7 @@ from .. import market_data
 from .runner import structured_synthesis
 
 # Bulk ranking over pre-scored candidates: cheapest capable free-tier model.
-SCREENER_MODEL = os.environ.get("SCREENER_MODEL", "gemini-2.5-flash-lite")
+SCREENER_MODEL = os.environ.get("SCREENER_MODEL", "gemini-3.5-flash-lite")
 
 UNIVERSE_PATH = Path(__file__).resolve().parent.parent / "nifty100.json"
 

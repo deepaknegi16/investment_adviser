@@ -12,7 +12,7 @@ from .. import market_data, rag
 from ..agents.runner import AgentUnavailable, simple_response
 from ..db import WatchlistItem, get_db
 
-CHAT_MODEL = os.environ.get("CHAT_MODEL", "gemini-2.5-flash-lite")
+CHAT_MODEL = os.environ.get("CHAT_MODEL", "gemini-3.5-flash-lite")
 MAX_HISTORY = 8
 
 router = APIRouter(prefix="/api")

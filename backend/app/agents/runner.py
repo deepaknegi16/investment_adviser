@@ -24,6 +24,8 @@ from google.genai import types
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+# Stable Gemini model to drop to when the primary is overloaded ("high demand").
+GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-3.6-flash")
 MAX_TOOL_TURNS = 8
 
 _gemini_client: Optional[genai.Client] = None
@@ -79,6 +81,42 @@ def _is_fallback_worthy(e: Exception) -> bool:
     return getattr(e, "code", None) not in (401, 403)
 
 
+def _is_transient(e: Exception) -> bool:
+    msg = (getattr(e, "message", None) or str(e)).lower()
+    return getattr(e, "code", None) in (500, 503) or "high demand" in msg or "overloaded" in msg
+
+
+def _generate(model: str, contents, config) -> Any:
+    """generate_content with overload/rate-limit resilience.
+
+    Free-tier quotas are per model, so on a 429 or overload we hop to the
+    stable fallback model's separate quota bucket, then wait out the
+    per-minute window and try both again before giving up.
+    """
+    import time
+
+    client = _gemini()
+    attempts = [(model, 0)]
+    if GEMINI_FALLBACK_MODEL != model:
+        attempts.append((GEMINI_FALLBACK_MODEL, 2))
+    attempts.append((model, 40))
+    if GEMINI_FALLBACK_MODEL != model:
+        attempts.append((GEMINI_FALLBACK_MODEL, 10))
+    last: Optional[Exception] = None
+    for attempt_model, delay in attempts:
+        if delay:
+            time.sleep(delay)
+        try:
+            return client.models.generate_content(
+                model=attempt_model, contents=contents, config=config
+            )
+        except genai_errors.APIError as e:
+            last = e
+            if not (_is_transient(e) or getattr(e, "code", None) == 429):
+                raise
+    raise last  # exhausted everywhere — surface the original APIError
+
+
 def _extract_json(text: str) -> Dict[str, Any]:
     try:
         return json.loads(text)
@@ -117,9 +155,7 @@ def tool_research(
     )
     try:
         for _ in range(max_turns):
-            resp = client.models.generate_content(
-                model=model, contents=contents, config=config
-            )
+            resp = _generate(model, contents, config)
             candidate = resp.candidates[0] if resp.candidates else None
             if candidate is None or candidate.content is None:
                 raise AgentUnavailable("Gemini returned an empty response.")
@@ -158,9 +194,7 @@ def web_research(model: str, prompt: str) -> Tuple[str, List[Dict[str, str]]]:
         tools=[types.Tool(google_search=types.GoogleSearch())]
     )
     try:
-        resp = client.models.generate_content(
-            model=model, contents=prompt, config=config
-        )
+        resp = _generate(model, prompt, config)
     except genai_errors.APIError as e:
         raise _map_gemini_error(e) from e
     sources: List[Dict[str, str]] = []
@@ -188,9 +222,7 @@ def structured_synthesis(
         response_json_schema=schema,
     )
     try:
-        resp = client.models.generate_content(
-            model=model, contents=prompt, config=config
-        )
+        resp = _generate(model, prompt, config)
         if not resp.text:
             raise AgentUnavailable("Gemini returned no text output.")
         return _extract_json(resp.text)
@@ -215,10 +247,8 @@ def simple_response(
             )
             for m in messages
         ]
-        resp = client.models.generate_content(
-            model=model,
-            contents=contents,
-            config=types.GenerateContentConfig(system_instruction=instructions),
+        resp = _generate(
+            model, contents, types.GenerateContentConfig(system_instruction=instructions)
         )
         if resp.text:
             return resp.text, "gemini"
