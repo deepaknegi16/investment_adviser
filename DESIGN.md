@@ -170,6 +170,10 @@ flowchart LR
 
 Every Analyst/Screener result is flattened to text and indexed (with a Gemini
 embedding) the moment it is cached, so the chat corpus grows as you use the app.
+Users can also **upload their own files** (📎 in the chat header — PDF via pypdf,
+plus txt/md/csv/json): they are chunked (~1,400 chars on paragraph boundaries),
+embedded, and stored in the same `rag_chunks` table under `file:` doc-keys, with
+list/delete management (`/api/documents`).
 The reply cites which stock/date research it drew on; if nothing matches, it
 says so and points you at generating the analysis first.
 

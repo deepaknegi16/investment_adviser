@@ -224,3 +224,19 @@ button.danger { background: transparent; color: var(--red); border: 1px solid va
 .chat-disclaimer {
   text-align: center; color: var(--muted); font-size: 10px; padding: 0 0 8px;
 }
+
+/* ---------- chat knowledge files ---------- */
+.icon-btn {
+  background: transparent; border: none; color: var(--text);
+  font-size: 14px; padding: 4px 6px; border-radius: 6px;
+}
+.icon-btn:hover { background: var(--border); }
+.knowledge-list {
+  border-bottom: 1px solid var(--border); padding: 8px 12px;
+  max-height: 140px; overflow-y: auto; font-size: 12px;
+  background: var(--panel-2);
+}
+.knowledge-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 3px 0;
+}

@@ -92,8 +92,21 @@ def chat(body: ChatBody, db: Session = Depends(get_db)):
     except AgentUnavailable as e:
         raise HTTPException(503, str(e))
 
-    sources = [
-        {"doc_key": c["doc_key"], "symbol": c["symbol"], "date": c["date"]}
-        for c in chunks
-    ]
+    def _label(c: Dict[str, str]) -> str:
+        key = c["doc_key"]
+        if key.startswith("file:"):
+            return key[len("file:"):].rsplit("#", 1)[0]
+        if key.startswith("picks:"):
+            return f"top-20 {c['date']}"
+        return f"{c['symbol']} ({c['date']})"
+
+    sources, seen = [], set()
+    for c in chunks:
+        label = _label(c)
+        if label in seen:
+            continue  # several chunks of one file collapse to one source
+        seen.add(label)
+        sources.append(
+            {"doc_key": c["doc_key"], "symbol": c["symbol"], "date": c["date"], "label": label}
+        )
     return {"reply": reply, "sources": sources, "provider": provider}

@@ -8,3 +8,5 @@ python-dotenv>=1.0
 requests>=2.31
 PyJWT>=2.8
 google-genai>=1.40
+python-multipart>=0.0.9
+pypdf>=4.0

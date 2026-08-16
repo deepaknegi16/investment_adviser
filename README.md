@@ -57,6 +57,9 @@ The Vite dev server proxies `/api` to the backend on port 8000.
 - The floating **💬 Research chat** answers questions grounded (via RAG) in the
   AI research this app has generated — per-stock analyses and screener runs —
   plus a live watchlist snapshot, and cites which research it used.
+- **📎 Add your own files to the chat's knowledge**: upload PDFs or text/markdown/
+  CSV notes (broker reports, your strategy rules) from the chat header; they are
+  chunked, embedded, and used to ground answers. Manage them via the 📚 list.
 - The chat's **🎙 mic button** takes voice commands (browser Web Speech API,
   works in Chrome): speak your question and it is transcribed and sent.
 

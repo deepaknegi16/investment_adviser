@@ -45,4 +45,25 @@ export const api = {
   picks: (refresh = false) => request(`/api/picks${refresh ? "?refresh=true" : ""}`),
   chat: (message, history) =>
     request("/api/chat", { method: "POST", body: JSON.stringify({ message, history }) }),
+  listDocuments: () => request("/api/documents"),
+  deleteDocument: (name) =>
+    request(`/api/documents/${encodeURIComponent(name)}`, { method: "DELETE" }),
+  uploadDocument: async (file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const headers = {};
+    const token = getToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch("/api/documents", { method: "POST", headers, body: fd });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        detail = (await res.json()).detail || detail;
+      } catch {
+        /* non-JSON error body */
+      }
+      throw new Error(detail);
+    }
+    return res.json();
+  },
 };

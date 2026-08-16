@@ -129,3 +129,73 @@ def search(query: str, k: int = TOP_K) -> List[Dict[str, Any]]:
         for r in ranked[:k]
         if r["score"] > 0
     ]
+
+
+# ------------------------------------------------------- user-uploaded files
+
+CHUNK_CHARS = 1400
+MAX_CHUNKS_PER_FILE = 60
+
+
+def _chunk_text(text: str) -> List[str]:
+    """Split on paragraph boundaries into ~CHUNK_CHARS pieces."""
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    chunks: List[str] = []
+    current = ""
+    for p in paragraphs:
+        while len(p) > CHUNK_CHARS:  # oversized paragraph: hard split
+            chunks.append((current + "\n\n" + p[:CHUNK_CHARS]).strip())
+            current, p = "", p[CHUNK_CHARS:]
+        if len(current) + len(p) + 2 > CHUNK_CHARS:
+            if current:
+                chunks.append(current)
+            current = p
+        else:
+            current = f"{current}\n\n{p}".strip()
+    if current:
+        chunks.append(current)
+    return chunks[:MAX_CHUNKS_PER_FILE]
+
+
+def index_file(filename: str, text: str, date: str) -> int:
+    """Chunk + embed an uploaded document; replaces any previous version."""
+    chunks = _chunk_text(text)
+    if not chunks:
+        return 0
+    vectors = _embed(chunks)
+    with SessionLocal() as db:
+        db.query(RagChunk).filter(
+            RagChunk.doc_key.like(f"file:{filename}#%")
+        ).delete(synchronize_session=False)
+        for i, chunk in enumerate(chunks):
+            db.add(
+                RagChunk(
+                    doc_key=f"file:{filename}#{i}",
+                    symbol=None,
+                    date=date,
+                    text=f"[From uploaded file '{filename}']\n{chunk}",
+                    embedding=json.dumps(vectors[i]) if vectors else None,
+                )
+            )
+        db.commit()
+    return len(chunks)
+
+
+def list_files() -> List[Dict[str, Any]]:
+    with SessionLocal() as db:
+        rows = db.query(RagChunk).filter(RagChunk.doc_key.like("file:%")).all()
+    files: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        name = r.doc_key[len("file:"):].rsplit("#", 1)[0]
+        entry = files.setdefault(name, {"name": name, "chunks": 0, "date": r.date})
+        entry["chunks"] += 1
+    return sorted(files.values(), key=lambda f: f["name"])
+
+
+def delete_file(filename: str) -> int:
+    with SessionLocal() as db:
+        n = db.query(RagChunk).filter(
+            RagChunk.doc_key.like(f"file:{filename}#%")
+        ).delete(synchronize_session=False)
+        db.commit()
+    return n

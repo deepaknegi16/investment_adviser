@@ -14,8 +14,54 @@ export default function ChatPanel() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
+  const [files, setFiles] = useState([]);
+  const [showFiles, setShowFiles] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const recognitionRef = useRef(null);
+  const fileInputRef = useRef(null);
   const bottomRef = useRef(null);
+
+  const refreshFiles = () => {
+    api.listDocuments().then((d) => setFiles(d.files)).catch(() => {});
+  };
+
+  useEffect(() => {
+    if (open) refreshFiles();
+  }, [open]);
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploading(true);
+    try {
+      const res = await api.uploadDocument(file);
+      refreshFiles();
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `📎 Added "${res.name}" to my knowledge (${res.chunks} section${res.chunks === 1 ? "" : "s"}). Ask me about it!`,
+        },
+      ]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `⚠ Upload failed: ${err.message}`, error: true },
+      ]);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDeleteFile = async (name) => {
+    try {
+      await api.deleteDocument(name);
+      refreshFiles();
+    } catch {
+      /* leave list as-is */
+    }
+  };
 
   const speechSupported =
     typeof window !== "undefined" &&
@@ -85,8 +131,52 @@ export default function ChatPanel() {
     <div className="chat-panel">
       <div className="chat-head">
         <span>💬 Research chat</span>
-        <button className="close-btn" onClick={() => setOpen(false)}>✕</button>
+        <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <button
+            className="icon-btn"
+            title="Add a file to the chat's knowledge (.pdf, .txt, .md, .csv)"
+            disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {uploading ? "⏳" : "📎"}
+          </button>
+          <button
+            className="icon-btn"
+            title="Uploaded knowledge files"
+            onClick={() => setShowFiles((v) => !v)}
+          >
+            📚{files.length > 0 ? ` ${files.length}` : ""}
+          </button>
+          <button className="close-btn" onClick={() => setOpen(false)}>✕</button>
+        </span>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.txt,.md,.csv,.json,.log"
+          style={{ display: "none" }}
+          onChange={handleUpload}
+        />
       </div>
+      {showFiles && (
+        <div className="knowledge-list">
+          {files.length === 0 ? (
+            <div className="muted" style={{ padding: "4px 2px" }}>
+              No files yet — use 📎 to add PDFs or notes the chat should know about.
+            </div>
+          ) : (
+            files.map((f) => (
+              <div className="knowledge-item" key={f.name}>
+                <span>
+                  📄 {f.name} <span className="muted">({f.chunks} sections, {f.date})</span>
+                </span>
+                <button className="icon-btn" title="Remove" onClick={() => handleDeleteFile(f.name)}>
+                  🗑
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      )}
       <div className="chat-messages">
         {messages.map((m, i) => (
           <div key={i} className={`chat-msg ${m.role}${m.error ? " err" : ""}`}>
@@ -95,7 +185,7 @@ export default function ChatPanel() {
               <div className="chat-sources">
                 grounded in:{" "}
                 {m.sources
-                  .map((s) => (s.symbol ? `${s.symbol} (${s.date})` : `top-20 ${s.date}`))
+                  .map((s) => s.label || (s.symbol ? `${s.symbol} (${s.date})` : `top-20 ${s.date}`))
                   .join(", ")}
               </div>
             )}
