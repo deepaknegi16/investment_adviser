@@ -10,7 +10,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from .auth import require_auth, router as auth_router  # noqa: E402
 from .db import init_db  # noqa: E402
-from .routers import analysis, chat, documents, picks, watchlist  # noqa: E402
+from .routers import analysis, chat, documents, metrics, picks, watchlist  # noqa: E402
 
 app = FastAPI(title="Indian Stock Portfolio Adviser")
 
@@ -29,6 +29,7 @@ app.include_router(analysis.router, dependencies=protected)
 app.include_router(picks.router, dependencies=protected)
 app.include_router(chat.router, dependencies=protected)
 app.include_router(documents.router, dependencies=protected)
+app.include_router(metrics.router, dependencies=protected)
 
 
 @app.on_event("startup")

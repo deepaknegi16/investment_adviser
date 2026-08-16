@@ -89,8 +89,12 @@ def _keyword_score(query: str, text: str) -> float:
     return sum(1.0 for w in words if w in lower) / len(words)
 
 
-def search(query: str, k: int = TOP_K) -> List[Dict[str, Any]]:
-    """Return the k most relevant research chunks for a chat question."""
+def search(query: str, k: int = TOP_K) -> Dict[str, Any]:
+    """Return the k most relevant research chunks for a chat question.
+
+    Returns {"chunks": [...], "mode": "semantic" | "keyword" | "empty"} —
+    each chunk carries its relevance score for logging and evaluation.
+    """
     with SessionLocal() as db:
         chunks = db.query(RagChunk).all()
         rows = [
@@ -104,7 +108,7 @@ def search(query: str, k: int = TOP_K) -> List[Dict[str, Any]]:
             for c in chunks
         ]
     if not rows:
-        return []
+        return {"chunks": [], "mode": "empty"}
 
     embedded = [r for r in rows if r["embedding"]]
     query_vec = _embed([query]) if embedded else None
@@ -113,6 +117,7 @@ def search(query: str, k: int = TOP_K) -> List[Dict[str, Any]]:
         # Guard against chunks embedded under a different model/dimension.
         embedded = [r for r in embedded if len(r["embedding"]) == len(q)]
     if query_vec and embedded:
+        mode = "semantic"
         q_norm = np.linalg.norm(q) or 1.0
         for r in embedded:
             v = np.array(r["embedding"])
@@ -120,15 +125,23 @@ def search(query: str, k: int = TOP_K) -> List[Dict[str, Any]]:
         ranked = sorted(embedded, key=lambda r: r["score"], reverse=True)
     else:
         # Embeddings unavailable — degrade to keyword overlap over all chunks.
+        mode = "keyword"
         for r in rows:
             r["score"] = _keyword_score(query, r["text"])
         ranked = sorted(rows, key=lambda r: r["score"], reverse=True)
 
-    return [
-        {k2: r[k2] for k2 in ("doc_key", "symbol", "date", "text")}
+    chunks = [
+        {
+            "doc_key": r["doc_key"],
+            "symbol": r["symbol"],
+            "date": r["date"],
+            "text": r["text"],
+            "score": round(r["score"], 4),
+        }
         for r in ranked[:k]
         if r["score"] > 0
     ]
+    return {"chunks": chunks, "mode": mode}
 
 
 # ------------------------------------------------------- user-uploaded files

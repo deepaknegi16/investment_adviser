@@ -64,6 +64,15 @@ The Vite dev server proxies `/api` to the backend on port 8000.
 - The chat's **🎙 mic button** takes voice commands (browser Web Speech API,
   works in Chrome): speak your question and it is transcribed and sent.
 
+## Quality: evaluation & metrics
+
+- `backend/eval_rag.py` scores the RAG pipeline: retrieval (recall@5, MRR over
+  an auto-generated golden set) and generation (Gemini-as-judge faithfulness +
+  relevance). Run: `.venv/bin/python eval_rag.py [--no-judge] [--judge-sample N]`.
+- `GET /api/metrics` (JWT) reports corpus health, cache state, chat quality
+  (provider breakdown, Groq-fallback rate, avg similarity, latency), and the
+  latest eval results. Details: AGENTIC_AI_DESIGN.md §12.
+
 ## Notes
 
 - The watchlist is seeded on first run with: Infosys, Wipro, Goldbees, Adani Green,

@@ -4,7 +4,7 @@ from __future__ import annotations
 import datetime as dt
 from pathlib import Path
 
-from sqlalchemy import Column, DateTime, Integer, String, Text, create_engine
+from sqlalchemy import Column, DateTime, Float, Integer, String, Text, create_engine
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 DB_PATH = Path(__file__).resolve().parent.parent / "adviser.db"
@@ -48,6 +48,30 @@ class RagChunk(Base):
     text = Column(Text, nullable=False)
     embedding = Column(Text, nullable=True)  # JSON float list; null if embedding failed
     created_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class ChatLog(Base):
+    """One row per chat turn — the observability trail for the RAG system."""
+
+    __tablename__ = "chat_log"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ts = Column(DateTime, default=dt.datetime.utcnow)
+    question = Column(Text, nullable=False)
+    provider = Column(String)          # gemini | groq
+    retrieval_mode = Column(String)    # semantic | keyword | empty
+    top_score = Column(Float, nullable=True)  # cosine similarity of best chunk
+    n_sources = Column(Integer)
+    latency_ms = Column(Integer)
+    answer_chars = Column(Integer)
+
+
+class EvalRun(Base):
+    """Stored results of eval_rag.py runs, surfaced by /api/metrics."""
+
+    __tablename__ = "eval_runs"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ts = Column(DateTime, default=dt.datetime.utcnow)
+    payload_json = Column(Text, nullable=False)
 
 
 SEED_WATCHLIST = [

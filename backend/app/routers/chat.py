@@ -1,8 +1,13 @@
-"""Chat endpoint: answers grounded in the agents' cached research via RAG."""
+"""Chat endpoint: answers grounded in the agents' cached research via RAG.
+
+`answer_question()` is the reusable core (also driven by eval_rag.py); the
+route wraps it. Every turn is logged to `chat_log` for /api/metrics.
+"""
 from __future__ import annotations
 
 import os
-from typing import Dict, List
+import time
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -10,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from .. import market_data, rag
 from ..agents.runner import AgentUnavailable, simple_response
-from ..db import WatchlistItem, get_db
+from ..db import ChatLog, WatchlistItem, get_db
 
 CHAT_MODEL = os.environ.get("CHAT_MODEL", "gemini-3.5-flash-lite")
 MAX_HISTORY = 8
@@ -19,13 +24,14 @@ router = APIRouter(prefix="/api")
 
 SYSTEM = """You are the assistant inside a personal Indian stock (NSE) dashboard.
 Answer the user's questions using the RESEARCH CONTEXT below — it contains this
-app's own AI-generated stock research (per-stock analyses and top-20 screener runs)
-plus a live snapshot of the user's watchlist.
+app's own AI-generated stock research (per-stock analyses and top-20 screener runs),
+the user's uploaded knowledge files, plus a live snapshot of the user's watchlist.
 
 Rules:
 - Ground answers in the provided context. When you use a piece of research, say
-  which stock and date it came from. If the context doesn't cover the question,
-  say so and suggest opening that stock's AI analysis to generate research first.
+  which stock and date (or which file) it came from. If the context doesn't cover
+  the question, say so and suggest opening that stock's AI analysis to generate
+  research first.
 - Be concise and conversational; this is a chat panel, not a report.
 - Plain text only — no markdown (no **bold**, no # headings). Short paragraphs
   and simple "-" bullets are fine.
@@ -61,13 +67,20 @@ def _watchlist_snapshot(db: Session) -> str:
     return "\n".join(lines)
 
 
-@router.post("/chat")
-def chat(body: ChatBody, db: Session = Depends(get_db)):
-    message = body.message.strip()
-    if not message:
-        raise HTTPException(400, "Empty message.")
+def _label(c: Dict[str, Any]) -> str:
+    key = c["doc_key"]
+    if key.startswith("file:"):
+        return key[len("file:"):].rsplit("#", 1)[0]
+    if key.startswith("picks:"):
+        return f"top-20 {c['date']}"
+    return f"{c['symbol']} ({c['date']})"
 
-    chunks = rag.search(message)
+
+def answer_question(message: str, history: List[Dict[str, str]], db: Session) -> Dict[str, Any]:
+    """Retrieve → answer → log. Returns the API payload plus `_chunks` (internal)."""
+    t0 = time.monotonic()
+    retrieval = rag.search(message)
+    chunks, mode = retrieval["chunks"], retrieval["mode"]
     research = (
         "\n\n---\n\n".join(c["text"] for c in chunks)
         if chunks
@@ -78,27 +91,17 @@ def chat(body: ChatBody, db: Session = Depends(get_db)):
         f"### Live watchlist snapshot\n{_watchlist_snapshot(db)}"
     )
 
-    history = [
+    trimmed = [
         {"role": h["role"], "content": h["content"]}
-        for h in body.history[-MAX_HISTORY:]
+        for h in history[-MAX_HISTORY:]
         if h.get("role") in ("user", "assistant") and h.get("content")
     ]
-    try:
-        reply, provider = simple_response(
-            instructions=instructions,
-            messages=history + [{"role": "user", "content": message}],
-            model=CHAT_MODEL,
-        )
-    except AgentUnavailable as e:
-        raise HTTPException(503, str(e))
-
-    def _label(c: Dict[str, str]) -> str:
-        key = c["doc_key"]
-        if key.startswith("file:"):
-            return key[len("file:"):].rsplit("#", 1)[0]
-        if key.startswith("picks:"):
-            return f"top-20 {c['date']}"
-        return f"{c['symbol']} ({c['date']})"
+    reply, provider = simple_response(
+        instructions=instructions,
+        messages=trimmed + [{"role": "user", "content": message}],
+        model=CHAT_MODEL,
+    )
+    latency_ms = int((time.monotonic() - t0) * 1000)
 
     sources, seen = [], set()
     for c in chunks:
@@ -109,4 +112,38 @@ def chat(body: ChatBody, db: Session = Depends(get_db)):
         sources.append(
             {"doc_key": c["doc_key"], "symbol": c["symbol"], "date": c["date"], "label": label}
         )
-    return {"reply": reply, "sources": sources, "provider": provider}
+
+    try:  # observability must never break the answer
+        db.add(ChatLog(
+            question=message[:500],
+            provider=provider,
+            retrieval_mode=mode,
+            top_score=chunks[0]["score"] if chunks else None,
+            n_sources=len(sources),
+            latency_ms=latency_ms,
+            answer_chars=len(reply),
+        ))
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    return {
+        "reply": reply,
+        "sources": sources,
+        "provider": provider,
+        "retrieval_mode": mode,
+        "_chunks": chunks,
+    }
+
+
+@router.post("/chat")
+def chat(body: ChatBody, db: Session = Depends(get_db)):
+    message = body.message.strip()
+    if not message:
+        raise HTTPException(400, "Empty message.")
+    try:
+        result = answer_question(message, body.history, db)
+    except AgentUnavailable as e:
+        raise HTTPException(503, str(e))
+    result.pop("_chunks", None)
+    return result

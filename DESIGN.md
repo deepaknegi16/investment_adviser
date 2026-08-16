@@ -205,7 +205,8 @@ In-process caches (not persisted): price history 10 min, analyst consensus 24 h.
 | `GET /api/stocks/{symbol}/analysis[?refresh=true]` | Cached / fresh AI analysis |
 | `GET /api/picks[?refresh=true]` | Cached / fresh top-20 |
 | `POST /api/auth/login` | Credentials → JWT (the only public endpoint besides health) |
-| `POST /api/chat` | RAG-grounded chat: `{message, history}` → `{reply, sources}` |
+| `POST /api/chat` | RAG-grounded chat: `{message, history}` → `{reply, sources, provider, retrieval_mode}`; every turn logged to `chat_log` |
+| `GET /api/metrics` | RAG corpus health, cache state, chat quality (provider/fallback rates, similarity, latency), latest eval results |
 
 ## 6. Cost, resilience, security
 
