@@ -96,6 +96,8 @@ sequenceDiagram
 
 ## 3. Agentic AI system design
 
+> Deep dive with full reasoning: [AGENTIC_AI_DESIGN.md](AGENTIC_AI_DESIGN.md).
+
 Both agents run on shared primitives (`agents/runner.py`) built on the **Gemini
 API free tier**. Gemini does not allow Google-Search grounding, custom function
 tools, and strict JSON output in one request, so an agent run is an explicit
