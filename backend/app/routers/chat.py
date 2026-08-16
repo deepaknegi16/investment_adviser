@@ -27,6 +27,8 @@ Rules:
   which stock and date it came from. If the context doesn't cover the question,
   say so and suggest opening that stock's AI analysis to generate research first.
 - Be concise and conversational; this is a chat panel, not a report.
+- Plain text only — no markdown (no **bold**, no # headings). Short paragraphs
+  and simple "-" bullets are fine.
 - You are not a licensed adviser — for buy/sell questions, present the research's
   view with its reasoning, and note it is informational, not financial advice."""
 
