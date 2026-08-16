@@ -1,15 +1,20 @@
-"""Stock Analyst Agent — news digest + prediction + recommendation for one share."""
+"""Stock Analyst Agent — news digest + prediction + recommendation for one share.
+
+Runs a three-phase Gemini pipeline (see runner.py): tool research over the
+market-data functions, a Google-Search-grounded news pass, then a structured
+synthesis constrained to ANALYSIS_SCHEMA.
+"""
 from __future__ import annotations
 
 import datetime as dt
 import os
 from typing import Any, Dict
 
-from .runner import run_agent
-from .tools import FUNCTION_TOOLS, TOOL_IMPLS, WEB_SEARCH_TOOL
+from .runner import structured_synthesis, tool_research, web_research
+from .tools import FUNCTION_DECLS, TOOL_IMPLS
 
-# Deep per-stock research: full reasoning model with web search.
-ANALYST_MODEL = os.environ.get("ANALYST_MODEL", "gpt-5")
+# Deep per-stock research: best free-tier Gemini model with search grounding.
+ANALYST_MODEL = os.environ.get("ANALYST_MODEL", "gemini-2.5-flash")
 
 ANALYSIS_SCHEMA: Dict[str, Any] = {
     "type": "object",
@@ -26,7 +31,6 @@ ANALYSIS_SCHEMA: Dict[str, Any] = {
                     "summary": {"type": "string"},
                 },
                 "required": ["headline", "source", "url", "date", "summary"],
-                "additionalProperties": False,
             },
         },
         "prediction": {
@@ -37,25 +41,27 @@ ANALYSIS_SCHEMA: Dict[str, Any] = {
                 "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
             },
             "required": ["short_term", "long_term", "confidence"],
-            "additionalProperties": False,
         },
         "recommendation": {"type": "string", "enum": ["BUY", "HOLD", "SELL"]},
         "reasoning": {"type": "string"},
     },
     "required": ["news", "prediction", "recommendation", "reasoning"],
-    "additionalProperties": False,
 }
 
-SYSTEM = """You are an equity research analyst covering the Indian stock market (NSE).
-You produce grounded, source-backed analysis for a retail investor's personal dashboard.
+RESEARCH_SYSTEM = """You are an equity research analyst covering the Indian stock
+market (NSE). Use the tools to build the quantitative picture for the requested
+share: current technicals and analyst consensus, plus price history where trend
+context helps. Finish with concise research notes (bullet points) covering trend,
+momentum, valuation signals, and what the analyst consensus implies. Notes only —
+no recommendation yet."""
 
-Ground every claim in tool results: use get_technicals and get_price_history for the
-quantitative picture, and web_search for recent news from reliable sources (business
-press, exchange filings, reputable financial media). Prefer news from the last 30 days.
+SYNTHESIS_SYSTEM = """You are an equity research analyst covering the Indian stock
+market (NSE), producing grounded analysis for a retail investor's dashboard.
 
 Rules:
-- 3 to 6 news items, each from a real search result with its actual URL and source name.
-  If a field is unknown, use an empty string — never invent URLs or dates.
+- 3 to 6 news items drawn ONLY from the news findings provided, each mapped to a
+  real source and URL from the provided source list. If a field is unknown, use
+  an empty string — never invent URLs or dates.
 - The prediction must state the key drivers and risks, not just a direction.
 - The recommendation weighs technicals, analyst consensus, and news together.
 - This is informational research, not personalized financial advice."""
@@ -63,25 +69,43 @@ Rules:
 
 def analyze_stock(symbol: str, name: str) -> Dict[str, Any]:
     today = dt.date.today().isoformat()
-    prompt = (
-        f"Analyze {name} (symbol {symbol}) on the NSE as of {today}.\n"
-        f"1. Call get_technicals for the current quantitative picture.\n"
-        f"2. Search the web for recent news about {name} (results, orders, regulatory, "
-        f"sector developments).\n"
-        f"3. Optionally inspect price history for trend context.\n"
-        f"Then return the structured analysis: news digest, short-term (1-3 months) and "
-        f"long-term (1-3 years) outlook with confidence, a BUY/HOLD/SELL call, and your "
-        f"reasoning in 3-5 sentences."
-    )
-    result = run_agent(
-        system=SYSTEM,
-        prompt=prompt,
-        tools=FUNCTION_TOOLS + [WEB_SEARCH_TOOL],
-        tool_impls=TOOL_IMPLS,
-        schema=ANALYSIS_SCHEMA,
-        schema_name="stock_analysis",
+
+    notes = tool_research(
         model=ANALYST_MODEL,
-        reasoning_effort="medium",
+        system=RESEARCH_SYSTEM,
+        prompt=(
+            f"Build the quantitative picture for {name} (symbol {symbol}) "
+            f"as of {today}."
+        ),
+        function_decls=FUNCTION_DECLS,
+        tool_impls=TOOL_IMPLS,
+    )
+
+    news_text, sources = web_research(
+        model=ANALYST_MODEL,
+        prompt=(
+            f"Find recent news (prefer the last 30 days, today is {today}) about "
+            f"{name} (NSE: {symbol.replace('.NS', '')}) — quarterly results, order "
+            f"wins, regulatory events, management changes, and sector developments. "
+            f"Summarize each item with its source and date."
+        ),
+    )
+    source_lines = "\n".join(f"- {s['title']}: {s['url']}" for s in sources) or "(none)"
+
+    result = structured_synthesis(
+        model=ANALYST_MODEL,
+        system=SYNTHESIS_SYSTEM,
+        prompt=(
+            f"Produce the final analysis of {name} ({symbol}) as of {today}.\n\n"
+            f"## Quantitative research notes\n{notes}\n\n"
+            f"## News findings (from web search)\n{news_text}\n\n"
+            f"## Available sources (title: url)\n{source_lines}\n\n"
+            f"Return: news digest, short-term (1-3 months) and long-term (1-3 years) "
+            f"outlook with confidence, a BUY/HOLD/SELL call, and reasoning in 3-5 "
+            f"sentences."
+        ),
+        schema=ANALYSIS_SCHEMA,
+        groq_fallback=False,  # the news grounding is Gemini-only; keep phases consistent
     )
     result["symbol"] = symbol
     result["generated_at"] = dt.datetime.now().isoformat(timespec="seconds")

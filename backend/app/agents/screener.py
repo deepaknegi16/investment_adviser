@@ -1,10 +1,10 @@
 """Screener Agent — top-20 picks from the Nifty 100 universe.
 
-Two stages keep AI cost low:
-1. Deterministic pre-screen (free): momentum/trend score over the full
-   universe, keep the top 30 candidates.
-2. Agent pass: Claude reviews the candidates (may pull technicals and
-   news for shortlisted names) and returns a ranked top 20 with rationale.
+Two stages keep the free-tier quota spend minimal:
+1. Deterministic pre-screen (free, no AI): momentum/trend score over the full
+   universe, keep the top 30 candidates with all their metrics attached.
+2. One structured-synthesis call: Gemini Flash-Lite ranks the candidates into
+   a top 20 with rationale (Groq fallback if Gemini is rate-limited).
 """
 from __future__ import annotations
 
@@ -15,11 +15,10 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from .. import market_data
-from .runner import run_agent
-from .tools import FUNCTION_TOOLS, TOOL_IMPLS, WEB_SEARCH_TOOL
+from .runner import structured_synthesis
 
-# Bulk ranking over pre-screened candidates: smaller, cheaper reasoning model.
-SCREENER_MODEL = os.environ.get("SCREENER_MODEL", "gpt-5-mini")
+# Bulk ranking over pre-scored candidates: cheapest capable free-tier model.
+SCREENER_MODEL = os.environ.get("SCREENER_MODEL", "gemini-2.5-flash-lite")
 
 UNIVERSE_PATH = Path(__file__).resolve().parent.parent / "nifty100.json"
 
@@ -38,28 +37,25 @@ PICKS_SCHEMA: Dict[str, Any] = {
                     "rationale": {"type": "string"},
                 },
                 "required": ["rank", "name", "symbol", "recommendation", "rationale"],
-                "additionalProperties": False,
             },
         },
         "market_note": {"type": "string"},
     },
     "required": ["picks", "market_note"],
-    "additionalProperties": False,
 }
 
 SYSTEM = """You are an equity screener for the Indian market (NSE), selecting the 20 most
 promising large-cap shares for a retail investor's watch table.
 
 You receive pre-screened candidates with momentum and trend metrics already computed.
-Rank them on the combination of: established trend quality, momentum sustainability,
-analyst consensus, and any recent news you deem worth checking. Use get_technicals for
-deeper detail on a name and web_search sparingly (only where news could change the
-ranking, e.g. a suspiciously sharp move).
+Rank them on the combination of: established trend quality (price vs SMAs), momentum
+sustainability (1m vs 1y returns, RSI not overheated), and distance from the 52-week
+high (room to run vs chasing a top).
 
 Rules:
 - Return exactly 20 picks, ranked 1 (best) to 20, drawn only from the given candidates.
-- Each rationale is one concise sentence naming the concrete driver.
-- Add a one-sentence market_note summarizing overall market conditions.
+- Each rationale is one concise sentence naming the concrete driver in the metrics.
+- Add a one-sentence market_note summarizing what the candidate set says about the market.
 - This is informational research, not personalized financial advice."""
 
 
@@ -92,6 +88,7 @@ def screen_top_picks() -> Dict[str, Any]:
     lines = [
         f"- {c['name']} ({c['symbol']}): price {c['price']}, 1m {c['ret_1m']}%, "
         f"1y {c['ret_1y']}%, 5y {c.get('ret_5y')}%, RSI {c.get('rsi')}, "
+        f"price vs SMA50/SMA200: {c['price']}/{c.get('sma50')}/{c.get('sma200')}, "
         f"vs 52w-high {c.get('pct_from_high52')}%, screen-score {c['score']}"
         for c in candidates
     ]
@@ -101,16 +98,12 @@ def screen_top_picks() -> Dict[str, Any]:
         + "\n".join(lines)
         + "\n\nSelect and rank the 20 best picks."
     )
-    result = run_agent(
+    result = structured_synthesis(
+        model=SCREENER_MODEL,
         system=SYSTEM,
         prompt=prompt,
-        tools=FUNCTION_TOOLS + [WEB_SEARCH_TOOL],
-        tool_impls=TOOL_IMPLS,
         schema=PICKS_SCHEMA,
-        schema_name="top_picks",
-        model=SCREENER_MODEL,
-        reasoning_effort="low",
-        max_output_tokens=20000,
+        groq_fallback=True,
     )
     # Attach live table metrics to each pick for display.
     metrics_by_symbol = {c["symbol"]: c for c in candidates}

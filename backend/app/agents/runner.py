@@ -1,43 +1,92 @@
-"""Shared agent loop on the OpenAI Responses API.
+"""Shared agent machinery on the free Gemini stack, with Groq fallback.
 
-Drives the agentic cycle: model → function calls → results → model, with the
-built-in web_search tool handled server-side by OpenAI. The final answer is
-constrained to a strict JSON schema via structured outputs.
+Gemini's API does not allow Google-Search grounding, custom function tools,
+and strict JSON output in a single request, so agent runs are a pipeline of
+three primitives:
+
+  1. tool_research()        — function-calling loop over our market-data tools
+  2. web_research()         — Google Search grounding pass (news, with sources)
+  3. structured_synthesis() — final JSON answer constrained to a schema
+
+simple_response() serves the chat. Synthesis and chat fall back to Groq
+(OpenAI-compatible API, no web search) when Gemini is rate-limited or down.
 """
 from __future__ import annotations
 
 import json
 import os
 import re
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-import openai
-from openai import OpenAI
+from google import genai
+from google.genai import errors as genai_errors
+from google.genai import types
 
-MAX_TURNS = 12  # model round-trips per agent run (function-call cycles)
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+MAX_TOOL_TURNS = 8
 
-_client: Optional[OpenAI] = None
+_gemini_client: Optional[genai.Client] = None
+_groq_client = None
 
 
 class AgentUnavailable(Exception):
-    """Raised when the AI layer can't run (no key, refusal, bad output)."""
+    """Raised when the AI layer can't run (no key, quota, bad output)."""
 
 
-def _get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        if not os.environ.get("OPENAI_API_KEY"):
+def _gemini() -> genai.Client:
+    global _gemini_client
+    if _gemini_client is None:
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
             raise AgentUnavailable(
-                "No OpenAI credentials found. Set OPENAI_API_KEY in backend/.env "
-                "to enable AI analysis."
+                "No Gemini credentials found. Create a free API key at "
+                "aistudio.google.com/apikey and set GEMINI_API_KEY in backend/.env."
             )
-        _client = OpenAI()
-    return _client
+        _gemini_client = genai.Client(api_key=api_key)
+    return _gemini_client
+
+
+def _groq():
+    """Groq client via the OpenAI-compatible endpoint; None if no key."""
+    global _groq_client
+    if _groq_client is None and os.environ.get("GROQ_API_KEY"):
+        from openai import OpenAI
+
+        _groq_client = OpenAI(
+            api_key=os.environ["GROQ_API_KEY"], base_url=GROQ_BASE_URL
+        )
+    return _groq_client
+
+
+def _map_gemini_error(e: Exception) -> AgentUnavailable:
+    code = getattr(e, "code", None)
+    if code == 429:
+        return AgentUnavailable(
+            "Gemini free-tier limit reached for now — try again in a minute "
+            "(daily quotas reset at midnight Pacific)."
+        )
+    if code in (401, 403):
+        return AgentUnavailable(
+            "Gemini API key was rejected — check GEMINI_API_KEY in backend/.env."
+        )
+    message = getattr(e, "message", None) or str(e)
+    return AgentUnavailable(f"Gemini API error: {message}")
+
+
+def _is_fallback_worthy(e: Exception) -> bool:
+    """Rate limits and server errors are worth retrying on Groq; auth is not."""
+    return getattr(e, "code", None) not in (401, 403)
 
 
 def _extract_json(text: str) -> Dict[str, Any]:
     try:
         return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    cleaned = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.MULTILINE)
+    try:
+        return json.loads(cleaned)
     except json.JSONDecodeError:
         pass
     match = re.search(r"\{.*\}", text, re.DOTALL)
@@ -46,116 +95,179 @@ def _extract_json(text: str) -> Dict[str, Any]:
     raise AgentUnavailable("Agent returned non-JSON output.")
 
 
-def run_agent(
+# ---------------------------------------------------------------- primitives
+
+
+def tool_research(
+    model: str,
     system: str,
     prompt: str,
-    tools: List[Dict[str, Any]],
-    tool_impls: Dict[str, Callable[..., str]],
-    schema: Dict[str, Any],
-    schema_name: str,
-    model: str,
-    reasoning_effort: str = "medium",
-    max_output_tokens: int = 16000,
-) -> Dict[str, Any]:
-    """Run an agentic loop and return the parsed structured result."""
-    client = _get_client()
-    input_items: List[Any] = [{"role": "user", "content": prompt}]
-
+    function_decls: List[Dict[str, Any]],
+    tool_impls: Dict[str, Any],
+    max_turns: int = MAX_TOOL_TURNS,
+) -> str:
+    """Function-calling loop: the model pulls data via our tools, returns notes."""
+    client = _gemini()
+    contents: List[Any] = [
+        types.Content(role="user", parts=[types.Part.from_text(text=prompt)])
+    ]
+    config = types.GenerateContentConfig(
+        system_instruction=system,
+        tools=[types.Tool(function_declarations=function_decls)],
+    )
     try:
-        for _ in range(MAX_TURNS):
-            resp = client.responses.create(
-                model=model,
-                instructions=system,
-                input=input_items,
-                tools=tools,
-                reasoning={"effort": reasoning_effort},
-                max_output_tokens=max_output_tokens,
-                text={
-                    "format": {
-                        "type": "json_schema",
-                        "name": schema_name,
-                        "schema": schema,
-                        "strict": True,
-                    }
-                },
+        for _ in range(max_turns):
+            resp = client.models.generate_content(
+                model=model, contents=contents, config=config
             )
-            input_items += resp.output
-            calls = [item for item in resp.output if item.type == "function_call"]
+            candidate = resp.candidates[0] if resp.candidates else None
+            if candidate is None or candidate.content is None:
+                raise AgentUnavailable("Gemini returned an empty response.")
+            contents.append(candidate.content)
+            calls = [
+                p.function_call
+                for p in (candidate.content.parts or [])
+                if p.function_call
+            ]
             if not calls:
-                if resp.status == "incomplete":
-                    raise AgentUnavailable(
-                        "Agent response was truncated — try refreshing."
-                    )
-                text = resp.output_text
-                if not text:
-                    refusals = [
-                        c.refusal
-                        for item in resp.output
-                        if item.type == "message"
-                        for c in item.content
-                        if c.type == "refusal"
-                    ]
-                    if refusals:
-                        raise AgentUnavailable(f"The model declined: {refusals[0]}")
-                    raise AgentUnavailable("Agent returned no text output.")
-                return _extract_json(text)
+                return resp.text or ""
+            response_parts = []
             for call in calls:
                 impl = tool_impls.get(call.name)
-                if impl is None:
-                    output = json.dumps({"error": f"unknown tool {call.name}"})
-                else:
-                    try:
-                        output = impl(**json.loads(call.arguments))
-                    except Exception as e:  # tool errors go back to the model
-                        output = json.dumps({"error": str(e)})
-                input_items.append(
-                    {
-                        "type": "function_call_output",
-                        "call_id": call.call_id,
-                        "output": output,
-                    }
+                try:
+                    output = impl(**dict(call.args)) if impl else json.dumps(
+                        {"error": f"unknown tool {call.name}"}
+                    )
+                except Exception as e:  # tool errors go back to the model
+                    output = json.dumps({"error": str(e)})
+                response_parts.append(
+                    types.Part.from_function_response(
+                        name=call.name, response={"result": output}
+                    )
                 )
-        raise AgentUnavailable("Agent did not finish within the turn limit.")
-    except openai.OpenAIError as e:
-        raise _map_error(e) from e
+            contents.append(types.Content(role="user", parts=response_parts))
+        raise AgentUnavailable("Agent did not finish within the tool-turn limit.")
+    except genai_errors.APIError as e:
+        raise _map_gemini_error(e) from e
 
 
-def _map_error(e: Exception) -> AgentUnavailable:
-    if isinstance(e, openai.AuthenticationError):
-        return AgentUnavailable(f"OpenAI authentication failed: {e}")
-    if isinstance(e, openai.RateLimitError):
-        if getattr(e, "code", None) == "insufficient_quota":
-            return AgentUnavailable(
-                "The OpenAI account has no remaining credits (insufficient_quota). "
-                "Add billing/credits at platform.openai.com, then retry."
-            )
-        return AgentUnavailable("OpenAI API rate limited — try again shortly.")
-    if isinstance(e, openai.APIConnectionError):
-        return AgentUnavailable("Could not reach the OpenAI API (network error).")
-    if isinstance(e, openai.APIStatusError):
-        return AgentUnavailable(f"OpenAI API error ({e.status_code}): {e.message}")
-    return AgentUnavailable(f"OpenAI request failed: {e}")
+def web_research(model: str, prompt: str) -> Tuple[str, List[Dict[str, str]]]:
+    """Google-Search-grounded pass. Returns (findings text, [{title, url}])."""
+    client = _gemini()
+    config = types.GenerateContentConfig(
+        tools=[types.Tool(google_search=types.GoogleSearch())]
+    )
+    try:
+        resp = client.models.generate_content(
+            model=model, contents=prompt, config=config
+        )
+    except genai_errors.APIError as e:
+        raise _map_gemini_error(e) from e
+    sources: List[Dict[str, str]] = []
+    candidate = resp.candidates[0] if resp.candidates else None
+    grounding = getattr(candidate, "grounding_metadata", None)
+    for chunk in getattr(grounding, "grounding_chunks", None) or []:
+        web = getattr(chunk, "web", None)
+        if web and web.uri:
+            sources.append({"title": web.title or web.uri, "url": web.uri})
+    return resp.text or "", sources
+
+
+def structured_synthesis(
+    model: str,
+    system: str,
+    prompt: str,
+    schema: Dict[str, Any],
+    groq_fallback: bool = True,
+) -> Dict[str, Any]:
+    """Final JSON answer constrained to `schema`; Groq fallback on Gemini outage."""
+    client = _gemini()
+    config = types.GenerateContentConfig(
+        system_instruction=system,
+        response_mime_type="application/json",
+        response_json_schema=schema,
+    )
+    try:
+        resp = client.models.generate_content(
+            model=model, contents=prompt, config=config
+        )
+        if not resp.text:
+            raise AgentUnavailable("Gemini returned no text output.")
+        return _extract_json(resp.text)
+    except genai_errors.APIError as e:
+        if groq_fallback and _is_fallback_worthy(e) and _groq() is not None:
+            return _groq_json(system, prompt, schema)
+        raise _map_gemini_error(e) from e
 
 
 def simple_response(
-    model: str,
     instructions: str,
-    input_items: List[Any],
-    reasoning_effort: str = "low",
-    max_output_tokens: int = 2000,
-) -> str:
-    """One tool-less model call (used by the chat) with the same error mapping."""
-    client = _get_client()
+    messages: List[Dict[str, str]],
+    model: str,
+) -> Tuple[str, str]:
+    """Chat turn. Returns (reply, provider). Gemini first, Groq fallback."""
     try:
-        resp = client.responses.create(
+        client = _gemini()
+        contents = [
+            types.Content(
+                role="model" if m["role"] == "assistant" else "user",
+                parts=[types.Part.from_text(text=m["content"])],
+            )
+            for m in messages
+        ]
+        resp = client.models.generate_content(
             model=model,
-            instructions=instructions,
-            input=input_items,
-            reasoning={"effort": reasoning_effort},
-            max_output_tokens=max_output_tokens,
+            contents=contents,
+            config=types.GenerateContentConfig(system_instruction=instructions),
         )
-    except openai.OpenAIError as e:
-        raise _map_error(e) from e
-    if not resp.output_text:
-        raise AgentUnavailable("The model returned no text output.")
-    return resp.output_text
+        if resp.text:
+            return resp.text, "gemini"
+        raise AgentUnavailable("Gemini returned no text output.")
+    except (genai_errors.APIError, AgentUnavailable) as e:
+        if isinstance(e, genai_errors.APIError) and not _is_fallback_worthy(e):
+            raise _map_gemini_error(e) from e
+        groq = _groq()
+        if groq is None:
+            if isinstance(e, genai_errors.APIError):
+                raise _map_gemini_error(e) from e
+            raise
+        return _groq_chat(instructions, messages), "groq"
+
+
+# ------------------------------------------------------------- Groq fallback
+
+
+def _groq_messages(instructions: str, messages: List[Dict[str, str]]):
+    return [{"role": "system", "content": instructions}] + [
+        {"role": m["role"], "content": m["content"]} for m in messages
+    ]
+
+
+def _groq_chat(instructions: str, messages: List[Dict[str, str]]) -> str:
+    import openai as openai_mod
+
+    try:
+        resp = _groq().chat.completions.create(
+            model=GROQ_MODEL, messages=_groq_messages(instructions, messages)
+        )
+        return resp.choices[0].message.content or ""
+    except openai_mod.OpenAIError as e:
+        raise AgentUnavailable(f"Groq fallback also failed: {e}") from e
+
+
+def _groq_json(system: str, prompt: str, schema: Dict[str, Any]) -> Dict[str, Any]:
+    import openai as openai_mod
+
+    instructions = (
+        f"{system}\n\nRespond with ONLY a JSON object matching this schema exactly:\n"
+        f"{json.dumps(schema)}"
+    )
+    try:
+        resp = _groq().chat.completions.create(
+            model=GROQ_MODEL,
+            messages=_groq_messages(instructions, [{"role": "user", "content": prompt}]),
+            response_format={"type": "json_object"},
+        )
+        return _extract_json(resp.choices[0].message.content or "")
+    except openai_mod.OpenAIError as e:
+        raise AgentUnavailable(f"Groq fallback also failed: {e}") from e

@@ -7,7 +7,7 @@ the trade-offs, and the decision with its rationale.
 
 | Option | Pros | Cons |
 |---|---|---|
-| **Python + FastAPI** ✅ | `yfinance` gives free NSE data in 3 lines; first-class OpenAI SDK; pandas for indicator math; fastest to build | GIL limits CPU parallelism (irrelevant here — workload is I/O) |
+| **Python + FastAPI** ✅ | `yfinance` gives free NSE data in 3 lines; first-class SDKs for every AI provider; pandas for indicator math; fastest to build | GIL limits CPU parallelism (irrelevant here — workload is I/O) |
 | Java + Spring Boot (original idea) | Familiar enterprise stack, strong typing | No good free market-data library; AI SDK support weaker; far more boilerplate for the same endpoints |
 | Node.js + Express | One language with the frontend | Financial/indicator libraries much weaker than pandas |
 
@@ -53,28 +53,38 @@ we actually use. Revisit if candlesticks/volume are ever wanted.
 
 ## 5. AI provider
 
+The provider changed twice, each time for a practical reason, and each swap
+touched only `agents/runner.py` + glue — validating the isolation of the agent
+loop behind one module:
+
+1. **Anthropic Claude** (original plan) — dropped for credential availability.
+2. **OpenAI (gpt-5 family)** — dropped because the account had no free credits.
+3. **Google Gemini free tier + Groq fallback** ✅ — current.
+
 | Option | Pros | Cons |
 |---|---|---|
-| **OpenAI (Responses API)** ✅ | User has an OpenAI API key; built-in `web_search` tool with citations; strict structured outputs; gpt-5 family gives a quality/cost ladder | Vendor lock-in at the agent-loop level |
-| Anthropic Claude (original plan) | Equivalent agentic feature set (tool runner, web search, structured outputs) | No Anthropic key available |
-| Local models (Ollama) | Free, private | No web search; weak structured-output reliability; hardware-bound quality |
+| **Gemini free tier** ✅ | The only free tier covering *all* our needs: function calling, **Google Search grounding** (the analyst's core need), JSON-schema output, and free embeddings; ~1,000–1,500 req/day on Flash/Flash-Lite | Flash-tier quality below paid flagships; free-tier data may be used by Google to improve products; Pro models are paid-only since Apr 2026 |
+| Groq free tier | Independent quota, very fast Llama 3.3 70B, no card | No web search; tight tokens/min |
+| OpenRouter `:free` pool | Many models | 50 req/day, no search, quality varies |
+| Local (Ollama) | Unlimited + private | No web search; weaker models for the analyst's job |
+| Paid (OpenAI/Anthropic) | Best quality | Requires credits — the constraint this switch removes |
 
-**Decision:** OpenAI — the practical driver was credential availability (the
-project was first built against Anthropic's SDK; the swap touched only
-`agents/runner.py` + `agents/tools.py`, validating the isolation of the agent
-loop behind one module). The provider-agnostic parts — prompts, JSON schemas,
-tool semantics, caching — carried over unchanged.
+**Combination chosen:** Gemini primary for everything; Groq as an automatic
+fallback for the screener synthesis and chat when Gemini's per-minute/day limits
+trip. The analyst's news phase stays Gemini-only, since Groq cannot search.
+Gemini's constraint that search grounding, function tools, and JSON schemas
+can't share one request shaped the runner into a three-phase pipeline
+(tool research → grounded news → synthesis) instead of a single tool loop.
 
 ## 6. Model selection per task
 
 | Option | Analysis |
 |---|---|
-| One big model for everything | Simplest, but the screener ranks 30 rows of pre-computed numbers — paying flagship rates for that is waste |
-| One small model for everything | Cheap, but the per-stock prediction is the output the user actually acts on; skimping there defeats the app's purpose |
-| **Split by task** ✅ | `gpt-5` (effort *medium*) for the Analyst — deep, once-per-stock-per-day research. `gpt-5-mini` (effort *low*) for the Screener — bulk comparative ranking. Both env-overridable. |
+| One model for everything | Simple, but burns the scarce quota (Flash: fewer daily requests) on mechanical tasks |
+| **Split by task** ✅ | `gemini-2.5-flash` for the Analyst — the deepest reasoning available with search grounding on the free tier. `gemini-2.5-flash-lite` for the Screener and chat — highest daily quota for mechanical/conversational work. `gemini-embedding-001` for RAG (free, 10M tokens/min). Groq `llama-3.3-70b-versatile` as the fallback lane. All env-overridable. |
 
-Matching model capability to task difficulty is the single biggest AI cost lever
-in the app after caching.
+On a free stack the split is about *quota allocation* as much as cost: spend the
+better model's limited daily requests only where quality shows.
 
 ## 7. Agentic architecture
 
@@ -84,9 +94,11 @@ in the app after caching.
 | **Tool-using agent loop** ✅ | Model *pulls* technicals/history on demand and searches live news; every claim grounded in a tool result | More round-trips, needs loop/turn-limit machinery |
 | Multi-agent (separate news, technical, ranking agents + orchestrator) | Separation of concerns | 3–4× the API calls and latency for a two-task app; coordination complexity buys nothing at this scale |
 
-**Decision:** one shared tool-using loop, two agent *configurations* (prompt +
-tools + schema + model). That is the smallest design that is genuinely agentic —
-the model decides what to look up — without multi-agent overhead.
+**Decision:** shared agentic primitives (tool loop, grounded search, structured
+synthesis), composed per agent. That is the smallest design that is genuinely
+agentic — the model decides what to look up in its research phase — without
+multi-agent overhead. On Gemini the primitives run as separate phases (its API
+won't mix them in one request); the behavior is the same.
 
 **Screener specifically — hybrid over pure-AI:** letting the model screen all
 110 names would mean ~110 tool calls per refresh. Instead code computes the
@@ -109,7 +121,7 @@ SMA200 with positive 1-month return; 🔴 the mirror image; 🟠 anything mixed.
 
 | Option | Pros | Cons |
 |---|---|---|
-| **OpenAI built-in `web_search` tool** ✅ | Fresh, server-side, returns real URLs the UI links to; the model filters for relevance | Per-search cost (bounded by caching + prompt guidance) |
+| **Gemini Google Search grounding** ✅ | Fresh, server-side, free-tier grounded quota, returns citation URLs the UI links to; the model filters for relevance | Grounding can't share a request with function tools (hence the phased pipeline) |
 | Google News RSS scraping | Free | Fragile parsing, no relevance filtering, redirects instead of source URLs |
 | Paid news APIs | Structured | Another key + subscription for a personal app |
 
@@ -146,7 +158,7 @@ invalidate sessions and nothing secret enters the repo.
 | No RAG — stuff all research into the prompt | Simple | Grows unboundedly with usage; retrieval keeps the prompt small and the answer focused |
 | Agent-with-tools chat (chat calls the analyst live) | Always fresh | Minutes of latency + fresh cost per chat message; RAG over cached research answers instantly |
 
-Retrieval feeds `gpt-5-mini` together with a live watchlist snapshot, so the
+Retrieval feeds `gemini-2.5-flash-lite` (Groq fallback) together with a live watchlist snapshot, so the
 chat can answer both "what did the research say" and "where is my portfolio now".
 
 ## 13. Voice input
@@ -154,12 +166,12 @@ chat can answer both "what did the research say" and "where is my portfolio now"
 | Option | Pros | Cons |
 |---|---|---|
 | **Browser Web Speech API** ✅ | Free, zero backend, instant, built into Chrome (the user's browser) | Chrome-centric; sends audio to the browser vendor's recognizer |
-| OpenAI Whisper/transcribe API | Best accuracy, any browser | Audio upload plumbing + per-minute cost + more latency |
+| Cloud transcription APIs (Whisper etc.) | Best accuracy, any browser | Audio upload plumbing + per-minute cost + more latency |
 | Local speech models | Private | Heavy install for a convenience feature |
 
 ## 14. Secret handling
 
-The OpenAI key lives only in `backend/.env` (gitignored, verified before every
+API keys (`GEMINI_API_KEY`, `GROQ_API_KEY`) live only in `backend/.env` (gitignored, verified before every
 push). `.env.example` documents the shape without the value. The key never
 appears in code, docs, logs, or the frontend — the browser talks only to our
 backend.

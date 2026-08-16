@@ -17,15 +17,15 @@ import numpy as np
 from .agents import runner
 from .db import RagChunk, SessionLocal
 
-EMBEDDING_MODEL = "text-embedding-3-small"
+EMBEDDING_MODEL = "gemini-embedding-001"  # free tier: 10M tokens/min
 TOP_K = 5
 
 
 def _embed(texts: List[str]) -> Optional[List[List[float]]]:
     try:
-        client = runner._get_client()
-        resp = client.embeddings.create(model=EMBEDDING_MODEL, input=texts)
-        return [item.embedding for item in resp.data]
+        client = runner._gemini()
+        resp = client.models.embed_content(model=EMBEDDING_MODEL, contents=texts)
+        return [list(e.values) for e in resp.embeddings]
     except Exception:
         return None
 
@@ -110,6 +110,9 @@ def search(query: str, k: int = TOP_K) -> List[Dict[str, Any]]:
     query_vec = _embed([query]) if embedded else None
     if query_vec:
         q = np.array(query_vec[0])
+        # Guard against chunks embedded under a different model/dimension.
+        embedded = [r for r in embedded if len(r["embedding"]) == len(q)]
+    if query_vec and embedded:
         q_norm = np.linalg.norm(q) or 1.0
         for r in embedded:
             v = np.array(r["embedding"])

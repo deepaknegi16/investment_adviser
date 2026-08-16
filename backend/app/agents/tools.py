@@ -1,7 +1,9 @@
-"""Function tools the OpenAI agents can call, plus the web-search built-in tool.
+"""Function tools the Gemini agents can call during the tool-research phase.
 
 Each tool has a plain-Python implementation (returns a JSON string) and a
-matching strict JSON-schema definition for the Responses API.
+matching function declaration (OpenAPI-style schema) for Gemini function
+calling. Web search is not a tool here — it is a separate grounded pass
+(see runner.web_research), per Gemini's tool-mixing rules.
 """
 from __future__ import annotations
 
@@ -28,15 +30,13 @@ def get_technicals(symbol: str) -> str:
     return json.dumps({"symbol": symbol, **metrics})
 
 
-FUNCTION_TOOLS = [
+FUNCTION_DECLS = [
     {
-        "type": "function",
         "name": "get_price_history",
         "description": (
             "Get historical closing prices for an NSE stock or ETF over a period. "
             "Use for trend context beyond the summary technicals."
         ),
-        "strict": True,
         "parameters": {
             "type": "object",
             "properties": {
@@ -51,11 +51,9 @@ FUNCTION_TOOLS = [
                 },
             },
             "required": ["symbol", "period"],
-            "additionalProperties": False,
         },
     },
     {
-        "type": "function",
         "name": "get_technicals",
         "description": (
             "Get current technical indicators and analyst consensus for an NSE "
@@ -63,7 +61,6 @@ FUNCTION_TOOLS = [
             "52-week high/low, and Yahoo analyst consensus (mean rating 1=strong "
             "buy to 5=sell, price target, analyst count) when available."
         ),
-        "strict": True,
         "parameters": {
             "type": "object",
             "properties": {
@@ -73,7 +70,6 @@ FUNCTION_TOOLS = [
                 },
             },
             "required": ["symbol"],
-            "additionalProperties": False,
         },
     },
 ]
@@ -82,5 +78,3 @@ TOOL_IMPLS = {
     "get_price_history": get_price_history,
     "get_technicals": get_technicals,
 }
-
-WEB_SEARCH_TOOL = {"type": "web_search"}

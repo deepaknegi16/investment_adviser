@@ -13,9 +13,10 @@ shows the AI screener's top-20 picks from the NSE large-cap universe.
 
 - **Backend**: Python (FastAPI) + `yfinance` for market data + SQLite for the
   watchlist and AI-result caches.
-- **Agentic AI**: OpenAI Responses API — two agents (`gpt-5` analyst, `gpt-5-mini`
-  screener) with function tools for prices/technicals and the built-in
-  `web_search` tool for news. Results are cached per day to control cost.
+- **Agentic AI (free tier)**: Google Gemini — `gemini-2.5-flash` analyst
+  (function tools + Google Search grounding for news) and `gemini-2.5-flash-lite`
+  screener/chat, with automatic Groq (Llama 3.3 70B) fallback when Gemini rate
+  limits. Results are cached per day to stay well inside the free quotas.
   See [DESIGN.md](DESIGN.md) and [DESIGN_ANALYSIS.md](DESIGN_ANALYSIS.md).
 - **Frontend**: React (Vite), dark dashboard UI.
 
@@ -27,13 +28,16 @@ shows the AI screener's top-20 picks from the NSE large-cap universe.
 cd backend
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-cp .env.example .env       # then put your OpenAI API key in .env
+cp .env.example .env       # then add your keys (see below)
 .venv/bin/uvicorn app.main:app --port 8000
 ```
 
-Without an `OPENAI_API_KEY` (or with an out-of-credit account) the price table,
-chart, and add/remove features all work; only the AI analysis and top-20 picks
-return a message explaining what's missing.
+**API keys (both free, no card):**
+- `GEMINI_API_KEY` — create at [aistudio.google.com/apikey](https://aistudio.google.com/apikey). Required for AI analysis, picks, and chat.
+- `GROQ_API_KEY` — optional, from [console.groq.com](https://console.groq.com). Fallback for chat/screener when Gemini rate-limits.
+
+Without keys the price table, chart, and add/remove features all work; the AI
+features return a message explaining what's missing.
 
 ### 2. Frontend
 

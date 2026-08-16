@@ -12,7 +12,7 @@ from .. import market_data, rag
 from ..agents.runner import AgentUnavailable, simple_response
 from ..db import WatchlistItem, get_db
 
-CHAT_MODEL = os.environ.get("CHAT_MODEL", "gpt-5-mini")
+CHAT_MODEL = os.environ.get("CHAT_MODEL", "gemini-2.5-flash-lite")
 MAX_HISTORY = 8
 
 router = APIRouter(prefix="/api")
@@ -82,10 +82,10 @@ def chat(body: ChatBody, db: Session = Depends(get_db)):
         if h.get("role") in ("user", "assistant") and h.get("content")
     ]
     try:
-        reply = simple_response(
-            model=CHAT_MODEL,
+        reply, provider = simple_response(
             instructions=instructions,
-            input_items=history + [{"role": "user", "content": message}],
+            messages=history + [{"role": "user", "content": message}],
+            model=CHAT_MODEL,
         )
     except AgentUnavailable as e:
         raise HTTPException(503, str(e))
@@ -94,4 +94,4 @@ def chat(body: ChatBody, db: Session = Depends(get_db)):
         {"doc_key": c["doc_key"], "symbol": c["symbol"], "date": c["date"]}
         for c in chunks
     ]
-    return {"reply": reply, "sources": sources}
+    return {"reply": reply, "sources": sources, "provider": provider}
