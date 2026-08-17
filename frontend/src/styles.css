@@ -287,3 +287,10 @@ button.danger { background: transparent; color: var(--red); border: 1px solid va
   background: var(--panel-2); border: 1px solid var(--border);
   border-radius: 4px; padding: 1px 5px; font-size: 12px;
 }
+
+/* ---------- ownership / holders ---------- */
+.ownership { font-size: 12px; white-space: nowrap; }
+.holders-table { font-size: 12px; }
+.holders-table th, .holders-table td { padding: 5px 8px; }
+.holders-table th:first-child, .holders-table td:first-child { text-align: left; }
+.holders-table td { white-space: normal; }

@@ -41,6 +41,8 @@ export const api = {
   search: (q) => request(`/api/search?q=${encodeURIComponent(q)}`),
   history: (symbol, period) => request(`/api/stocks/${symbol}/history?period=${period}`),
   summary: (symbol) => request(`/api/stocks/${symbol}/summary`),
+  holders: (symbol, refresh = false) =>
+    request(`/api/stocks/${symbol}/holders${refresh ? "?refresh=true" : ""}`),
   analysis: (symbol, refresh = false) =>
     request(`/api/stocks/${symbol}/analysis${refresh ? "?refresh=true" : ""}`),
   picks: (refresh = false) => request(`/api/picks${refresh ? "?refresh=true" : ""}`),

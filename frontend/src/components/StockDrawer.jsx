@@ -20,6 +20,8 @@ export default function StockDrawer({ share, onClose, onRemove, onWatchlistChang
   const [analysis, setAnalysis] = useState(null);
   const [aiLoading, setAiLoading] = useState(true);
   const [aiError, setAiError] = useState(null);
+  const [holdersData, setHoldersData] = useState(null);
+  const [holdersLoading, setHoldersLoading] = useState(true);
   const [showLogic, setShowLogic] = useState(false);
   const [adding, setAdding] = useState(false);
 
@@ -53,6 +55,15 @@ export default function StockDrawer({ share, onClose, onRemove, onWatchlistChang
     setAnalysis(null);
     loadAnalysis();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [share.symbol]);
+
+  useEffect(() => {
+    setHoldersData(null);
+    setHoldersLoading(true);
+    api.holders(share.symbol)
+      .then(setHoldersData)
+      .catch(() => setHoldersData(null))
+      .finally(() => setHoldersLoading(false));
   }, [share.symbol]);
 
   const addToWatchlist = async () => {
@@ -199,6 +210,53 @@ export default function StockDrawer({ share, onClose, onRemove, onWatchlistChang
               </>
             ) : null}
           </div>
+        </div>
+
+        <div className="mini-panel" style={{ marginTop: 12 }}>
+          <h3>Major holders</h3>
+          {holdersLoading ? (
+            <div className="muted">Looking up big shareholders…</div>
+          ) : holdersData ? (
+            <>
+              {holdersData.structural && (
+                <p style={{ margin: "0 0 8px" }}>
+                  Promoters <b>{holdersData.structural.promoters_pct ?? "—"}%</b>
+                  {" · "}Institutions <b>{holdersData.structural.institutions_pct ?? "—"}%</b>
+                </p>
+              )}
+              {holdersData.holders?.length ? (
+                <table className="holders-table">
+                  <thead>
+                    <tr><th>Holder</th><th>% of company</th><th>Shares</th></tr>
+                  </thead>
+                  <tbody>
+                    {holdersData.holders.map((h, i) => (
+                      <tr key={i} className="static">
+                        <td>
+                          {h.name}
+                          {h.category && h.category !== "other" && (
+                            <span className="share-symbol">{h.category.replace("_", " ")}</span>
+                          )}
+                          {h.note && <div className="src">{h.note}</div>}
+                        </td>
+                        <td>{h.pct_of_company != null ? `${h.pct_of_company}%` : "—"}</td>
+                        <td>{h.shares || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="muted">No named holder data available.</div>
+              )}
+              <p className="src" style={{ marginBottom: 0 }}>
+                {holdersData.source === "ai"
+                  ? `AI-compiled from public shareholding data${holdersData.as_of ? ` · as of ${holdersData.as_of}` : ""}${holdersData.cached ? " (cached)" : ""}`
+                  : holdersData.summary}
+              </p>
+            </>
+          ) : (
+            <div className="muted">Holder data unavailable.</div>
+          )}
         </div>
 
         <div className="mini-panel" style={{ marginTop: 12 }}>

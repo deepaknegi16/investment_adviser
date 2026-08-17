@@ -50,6 +50,15 @@ class RagChunk(Base):
     created_at = Column(DateTime, default=dt.datetime.utcnow)
 
 
+class AiHolders(Base):
+    """Cached big-shareholder lookups (quarterly data — 30-day TTL)."""
+
+    __tablename__ = "ai_holders"
+    symbol = Column(String, primary_key=True)
+    date = Column(String, nullable=False)  # YYYY-MM-DD of the lookup
+    payload_json = Column(Text, nullable=False)
+
+
 class ChatLog(Base):
     """One row per chat turn — the observability trail for the RAG system."""
 

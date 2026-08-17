@@ -97,3 +97,61 @@ def analysis(symbol: str, refresh: bool = False, db: Session = Depends(get_db)):
         pass  # indexing must never break the analysis response
     result["cached"] = False
     return result
+
+
+HOLDERS_TTL_DAYS = 30
+
+
+@router.get("/{symbol}/holders")
+def holders(symbol: str, refresh: bool = False, db: Session = Depends(get_db)):
+    """Major shareholders: AI grounded lookup (30-day cache) with Yahoo fallback."""
+    from ..agents.holders import fetch_big_holders
+    from ..db import AiHolders
+
+    symbol = symbol.upper()
+    structural = (market_data.get_consensus(symbol) or {}).get("ownership")
+
+    if not refresh:
+        row = db.get(AiHolders, symbol)
+        if row:
+            age = (dt.date.today() - dt.date.fromisoformat(row.date)).days
+            if age <= HOLDERS_TTL_DAYS:
+                payload = json.loads(row.payload_json)
+                payload["structural"] = structural
+                payload["cached"] = age > 0
+                return payload
+
+    name = _resolve_name(symbol, db)
+    try:
+        result = fetch_big_holders(symbol, name)
+        row = db.get(AiHolders, symbol)
+        if row:
+            row.date = dt.date.today().isoformat()
+            row.payload_json = json.dumps(result)
+        else:
+            db.add(AiHolders(symbol=symbol, date=dt.date.today().isoformat(),
+                             payload_json=json.dumps(result)))
+        db.commit()
+        result["structural"] = structural
+        result["cached"] = False
+        return result
+    except AgentUnavailable as e:
+        # Degrade to Yahoo's (sparse for NSE) named holders + structural split.
+        named = market_data.get_named_holders(symbol)
+        return {
+            "symbol": symbol,
+            "source": "yahoo",
+            "holders": [
+                {
+                    "name": h["name"], "category": "other",
+                    "pct_of_company": h["pct"], "shares": str(h["shares"] or ""),
+                    "note": f"as of {h['as_of']}" if h.get("as_of") else "",
+                }
+                for h in named
+            ],
+            "as_of": named[0]["as_of"] if named else "",
+            "summary": f"AI lookup unavailable ({e}); showing Yahoo institutional data"
+                       + (" (none available for this NSE symbol)" if not named else " — may be dated"),
+            "structural": structural,
+            "cached": False,
+        }

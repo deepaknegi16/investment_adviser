@@ -10,6 +10,19 @@ export function AdviceBadge({ advice }) {
   return <span className={`badge ${cls}`}>{advice}</span>;
 }
 
+export function Ownership({ ownership }) {
+  const p = ownership?.promoters_pct;
+  const i = ownership?.institutions_pct;
+  if (p == null && i == null) return <span className="muted">—</span>;
+  return (
+    <span className="ownership" title="Promoter and institutional holding — click the row for named big holders">
+      {p != null && <span>Prom <b>{p}%</b></span>}
+      {p != null && i != null && <span className="muted"> · </span>}
+      {i != null && <span>Inst <b>{i}%</b></span>}
+    </span>
+  );
+}
+
 export default function PortfolioTable({ shares, onSelect }) {
   if (shares.length === 0) {
     return <div className="loading">Watchlist is empty — add a share to get started.</div>;
@@ -25,6 +38,7 @@ export default function PortfolioTable({ shares, onSelect }) {
           <th>1Y</th>
           <th>5Y</th>
           <th style={{ textAlign: "center" }}>Status</th>
+          <th>Big holders</th>
           <th>Advice</th>
         </tr>
       </thead>
@@ -36,7 +50,7 @@ export default function PortfolioTable({ shares, onSelect }) {
               <span className="share-symbol">{s.symbol.replace(".NS", "")}</span>
             </td>
             {s.error ? (
-              <td colSpan={7} className="muted">no data available</td>
+              <td colSpan={8} className="muted">no data available</td>
             ) : (
               <>
                 <td>{s.price?.toLocaleString("en-IN")}</td>
@@ -47,6 +61,7 @@ export default function PortfolioTable({ shares, onSelect }) {
                 <td style={{ textAlign: "center" }}>
                   <span className={`dot ${s.status}`} title={s.status} />
                 </td>
+                <td><Ownership ownership={s.consensus?.ownership} /></td>
                 <td><AdviceBadge advice={s.advice} /></td>
               </>
             )}

@@ -121,16 +121,26 @@ def get_consensus(symbol: str) -> dict:
         entry = _consensus_cache.get(symbol)
         if entry and time.time() - entry["ts"] < CONSENSUS_TTL:
             return entry["data"]
-    result = {"mean": None, "label": None, "target": None, "analysts": None}
+    result = {
+        "mean": None, "label": None, "target": None, "analysts": None,
+        "ownership": None,
+    }
     try:
         info = yf.Ticker(symbol).info
         mean = info.get("recommendationMean")
         target = info.get("targetMeanPrice")
+        insiders = info.get("heldPercentInsiders")
+        institutions = info.get("heldPercentInstitutions")
         result = {
             "mean": round(mean, 1) if mean is not None else None,
             "label": (info.get("recommendationKey") or "").replace("_", " ") or None,
             "target": round(target, 2) if target is not None else None,
             "analysts": info.get("numberOfAnalystOpinions"),
+            # Insiders ≈ promoter group for Indian listings.
+            "ownership": {
+                "promoters_pct": round(insiders * 100, 1) if insiders is not None else None,
+                "institutions_pct": round(institutions * 100, 1) if institutions is not None else None,
+            },
         }
     except Exception:
         pass
@@ -199,3 +209,33 @@ def search_nse(query: str) -> List[dict]:
         for q in quotes
         if q.get("symbol", "").endswith(".NS")
     ]
+
+
+_holders_cache: Dict[str, dict] = {}  # symbol -> {ts, data}
+HOLDERS_TTL = 86400
+
+
+def get_named_holders(symbol: str) -> List[dict]:
+    """Named institutional holders from Yahoo (sparse/stale for NSE — best effort)."""
+    with _lock:
+        entry = _holders_cache.get(symbol)
+        if entry and time.time() - entry["ts"] < HOLDERS_TTL:
+            return entry["data"]
+    holders: List[dict] = []
+    try:
+        df = yf.Ticker(symbol).institutional_holders
+        if df is not None and not df.empty and "Holder" in df.columns:
+            for _, row in df.head(8).iterrows():
+                pct = row.get("pctHeld")
+                shares = row.get("Shares")
+                holders.append({
+                    "name": str(row.get("Holder")),
+                    "pct": round(float(pct) * 100, 2) if pct == pct and pct is not None else None,
+                    "shares": int(shares) if shares == shares and shares is not None else None,
+                    "as_of": str(row.get("Date Reported"))[:10] if row.get("Date Reported") is not None else None,
+                })
+    except Exception:
+        pass
+    with _lock:
+        _holders_cache[symbol] = {"ts": time.time(), "data": holders}
+    return holders

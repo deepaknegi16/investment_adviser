@@ -206,6 +206,7 @@ In-process caches (not persisted): price history 10 min, analyst consensus 24 h.
 | `GET /api/picks[?refresh=true]` | Cached / fresh top-20 |
 | `POST /api/auth/login` | Credentials → JWT (the only public endpoint besides health) |
 | `POST /api/chat` | RAG-grounded chat: `{message, history}` → `{reply, sources, provider, retrieval_mode}`; every turn logged to `chat_log` |
+| `GET /api/stocks/{symbol}/holders[?refresh=true]` | Major shareholders: AI grounded lookup (30-day cache, circuit breaker) with Yahoo structural/named fallback |
 | `GET /api/metrics` | RAG corpus health, cache state, chat quality (provider/fallback rates, similarity, latency), latest eval results |
 
 ## 6. Cost, resilience, security
