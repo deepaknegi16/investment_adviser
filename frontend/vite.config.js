@@ -5,6 +5,11 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    // Bind to all interfaces so the dashboard is reachable from a phone on the
+    // same Wi-Fi (http://<mac-lan-ip>:5173). The backend stays on 127.0.0.1 —
+    // the proxy below runs inside this dev server, so the API is never exposed
+    // to the network directly.
+    host: true,
     proxy: {
       "/api": {
         target: "http://127.0.0.1:8000",

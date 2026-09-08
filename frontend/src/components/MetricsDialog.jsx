@@ -52,6 +52,7 @@ export default function MetricsDialog({ onClose }) {
   }, []);
 
   const evalResults = data?.eval?.results;
+  const gold = data?.gold_watch;
 
   return (
     <div className="dialog-backdrop" onClick={onClose}>
@@ -100,6 +101,11 @@ export default function MetricsDialog({ onClose }) {
                 value={data.chat.avg_latency_ms != null ? `${(data.chat.avg_latency_ms / 1000).toFixed(1)}s` : "—"}
                 sub="per chat answer"
               />
+              <Tile
+                label="Gold events"
+                value={gold?.events_tracked ?? "—"}
+                sub={gold ? `${gold.runs_total} sweeps · ${gold.alerts_sent} alerts sent` : "no sweeps yet"}
+              />
             </div>
 
             <div className="metrics-grid">
@@ -120,6 +126,43 @@ export default function MetricsDialog({ onClose }) {
                 <h3>Chat quality</h3>
                 <Breakdown title="Answered by" data={data.chat.provider_breakdown} />
                 <Breakdown title="Retrieval mode" data={data.chat.retrieval_mode_breakdown} />
+              </div>
+
+              <div className="mini-panel">
+                <h3>Gold watch (GOLDBEES)</h3>
+                {gold?.runs_total ? (
+                  <>
+                    <div className="kv">
+                      <dt className="muted">last sweep</dt>
+                      <dd>{gold.last_run_at?.replace("T", " ") || "—"}</dd>
+                    </div>
+                    <div className="kv">
+                      <dt className="muted">factor bias</dt>
+                      <dd>
+                        {gold.last_bias || "—"}
+                        {gold.last_conviction ? ` (${gold.last_conviction})` : ""}
+                      </dd>
+                    </div>
+                    <div className="kv">
+                      <dt className="muted">GOLDBEES at sweep</dt>
+                      <dd>{gold.last_etf_price != null ? `₹${gold.last_etf_price}` : "—"}</dd>
+                    </div>
+                    <div className="kv">
+                      <dt className="muted">email alerts</dt>
+                      <dd>
+                        {gold.email_configured
+                          ? `on → ${(gold.email_to || []).join(", ")}`
+                          : `off — set ${(gold.email_missing_config || []).join(", ")}`}
+                      </dd>
+                    </div>
+                    <Breakdown title="Events by impact" data={gold.events_by_impact} />
+                    <Breakdown title="Events by factor" data={gold.events_by_factor} />
+                  </>
+                ) : (
+                  <span className="muted">
+                    no sweeps yet — run backend/gold_watch_run.py
+                  </span>
+                )}
               </div>
 
               <div className="mini-panel" style={{ gridColumn: "1 / -1" }}>

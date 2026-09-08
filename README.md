@@ -53,9 +53,18 @@ The Vite dev server proxies `/api` to the backend on port 8000.
 
 ## Login, chat, and voice
 
-- The app is protected by a **login page (JWT auth)**. Default credentials are
-  `deepak` / `adviser@123` — change them by setting `AUTH_USERNAME` and
-  `AUTH_PASSWORD` in `backend/.env`.
+- The app is protected by a **login page (JWT auth)**. There is **no default
+  password** — set `AUTH_USERNAME` and `AUTH_PASSWORD` in `backend/.env` or the
+  backend refuses to start. The old example value `adviser@123` is rejected by
+  name, since it is published in this repo. Generate a strong one:
+
+  ```bash
+  python3 -c "import secrets,string; a=''.join(c for c in string.ascii_letters+string.digits if c not in 'O0Il1'); print('-'.join(''.join(secrets.choice(a) for _ in range(5)) for _ in range(3)))"
+  ```
+
+  Rotating the password does not end existing sessions on its own — JWTs stay
+  valid for their 24-hour TTL. Delete `backend/jwt_secret.key` as well to force
+  everyone to log in again.
 - The floating **💬 Research chat** answers questions grounded (via RAG) in the
   AI research this app has generated — per-stock analyses and screener runs —
   plus a live watchlist snapshot, and cites which research it used.
@@ -87,3 +96,62 @@ The Vite dev server proxies `/api` to the backend on port 8000.
 - Yahoo Finance access is unofficial and occasionally rate-limits; all Yahoo calls
   are isolated in `backend/app/market_data.py` and cached (prices 10 min, analyst
   consensus 24 h).
+
+## Gold Watch — GOLDBEES factor monitor
+
+A dedicated agent for `GOLDBEES.NS` (Nippon India ETF Gold BeES). A gold ETF has no
+earnings or management, so instead of the stock-analyst pipeline it watches the chain
+of macro factors that actually set its price:
+
+```
+US real rates / Fed  ->  gold in USD  ->  x USDINR  ->  x India import duty  ->  GOLDBEES
+central bank buying      geopolitics / oil          fund expense drag
+```
+
+**Modules**
+
+| File | Role |
+|---|---|
+| `app/gold_factors.py` | Deterministic factor board. Decomposes the ETF into `k × gold_usd × USDINR / 31.1035` and attributes every return window to the gold / rupee / domestic-premium legs. No AI. |
+| `app/gold_news.py` | Quota-free RSS discovery across nine factor buckets (Google News per-factor queries + commodity desks). |
+| `app/agents/gold_watch.py` | Tags each headline with its factor, direction and materiality; adds an optional Gemini search-grounded enrichment pass; synthesises the overall bias. |
+| `app/agents/gold_alerts.py` | Dedupe, the materiality bar, and the HTML/plain-text alert email. |
+| `app/gold_scenarios.py` | Scenario projection — explicit driver paths, a ±1σ realised-vol cone, and a gold × rupee sensitivity grid. |
+| `app/notify.py` | SMTP delivery, provider-agnostic. |
+| `gold_watch_run.py` | CLI entry point for cron. |
+
+**An alert fires only when** a new high-impact event lands, three new medium events
+cluster, GOLDBEES moves ≥2% in a session, the domestic premium moves ≥2% in a month
+(the import-duty tripwire), the factor bias flips, or RSI-14 leaves the 30–70 band.
+Everything else is stored and not mailed.
+
+**Setup**
+
+```bash
+# 1. Gmail App Password (needs 2-Step Verification):
+#    https://myaccount.google.com/apppasswords  -> paste into SMTP_PASSWORD in backend/.env
+cd backend && .venv/bin/python gold_watch_run.py --test-email
+
+# 2. Run a sweep
+.venv/bin/python gold_watch_run.py            # email only if material
+.venv/bin/python gold_watch_run.py --digest   # always email
+.venv/bin/python gold_watch_run.py --dry-run  # research, never email
+
+# 3. Schedule it (crontab -e)
+30 9,15 * * 1-5  cd /path/to/backend && .venv/bin/python gold_watch_run.py >> gold_watch.log 2>&1
+45 18   * * 5    cd /path/to/backend && .venv/bin/python gold_watch_run.py --digest >> gold_watch.log 2>&1
+```
+
+**API** — `GET /api/gold/factors`, `/history`, `/scenarios`, `/sensitivity`, `/events`,
+`/runs`, `/latest`, `/alerts/config`; `POST /api/gold/watch`, `/alerts/test`.
+
+**Dashboard integration** — `/api/stocks/{symbol}/analysis` routes gold ETFs
+(`gold_watch.GOLD_ETF_SYMBOLS`) to this agent instead of the equity analyst, projected
+into the analyst's payload shape by `gold_alerts.as_stock_analysis()`. Opening GOLDBEES
+in the StockDrawer therefore shows factor news and a driver-based outlook with no
+frontend change, and the sweep is picked up by the existing RAG indexer so the chat
+panel can cite it. Sweep counts, bias history, event breakdown and email-config status
+appear under `gold_watch` in `GET /api/metrics`.
+
+There is **no dedicated gold panel in the React app** — the agent is reachable through
+the existing drawer, the `/api/gold/*` endpoints and the CLI.

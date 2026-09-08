@@ -81,7 +81,7 @@ can't share one request shaped the runner into a three-phase pipeline
 | Option | Analysis |
 |---|---|
 | One model for everything | Simple, but burns the scarce quota (Flash: fewer daily requests) on mechanical tasks |
-| **Split by task** ✅ | `gemini-2.5-flash` for the Analyst — the deepest reasoning available with search grounding on the free tier. `gemini-2.5-flash-lite` for the Screener and chat — highest daily quota for mechanical/conversational work. `gemini-embedding-001` for RAG (free, 10M tokens/min). Groq `llama-3.3-70b-versatile` as the fallback lane. All env-overridable. |
+| **Split by task** ✅ | `gemini-3.5-flash` for the Analyst — the deepest reasoning available with search grounding on the free tier. `gemini-3.5-flash-lite` for the Screener and chat — highest daily quota for mechanical/conversational work. `gemini-embedding-001` for RAG (free, 10M tokens/min). Groq `llama-3.3-70b-versatile` as the fallback lane. All env-overridable. |
 
 On a free stack the split is about *quota allocation* as much as cost: spend the
 better model's limited daily requests only where quality shows.
@@ -125,6 +125,16 @@ SMA200 with positive 1-month return; 🔴 the mirror image; 🟠 anything mixed.
 | Google News RSS scraping | Free | Fragile parsing, no relevance filtering, redirects instead of source URLs |
 | Paid news APIs | Structured | Another key + subscription for a personal app |
 
+**Revised for the standing watcher (§15).** The verdict above still holds for the
+Analyst, which runs on demand and can degrade to technicals-only when grounding
+is unavailable. It did *not* hold for a monitor that must run unattended: the
+first Gold Watch run returned zero events because the free search-grounding quota
+was already spent, and it failed silently. RSS was reconsidered and won on the
+one axis that matters for a watcher — it never runs out. The listed cons proved
+manageable: Google News RSS returns a `<source>` element (no scraping needed) and
+the relevance filtering the model was doing is now done by nine narrow per-factor
+queries plus a scoring pass over the results.
+
 ## 10. AI cost & latency controls
 
 Decisions stacked to keep spend near zero on idle days:
@@ -134,8 +144,10 @@ Decisions stacked to keep spend near zero on idle days:
 2. **AI only on demand** — nothing in the 60-second polling path calls a model.
 3. **Free pre-screen** shrinks the screener's model workload 110 → 30 names.
 4. **Cheaper model + low effort** where the task is mechanical (§6).
-5. **Thinned tool payloads** (chart series capped at ~60 points) and a **12-turn
-   loop limit** as a runaway guard.
+5. **Thinned tool payloads** (chart series capped at ~60 points) and an **8-turn
+   loop limit** (`runner.MAX_TOOL_TURNS`) as a runaway guard.
+6. **Unmetered discovery for the standing watcher** — the Gold Watch spends one
+   model call per sweep regardless of how many headlines it reads (§15).
 
 ## 11. Authentication
 
@@ -158,7 +170,7 @@ invalidate sessions and nothing secret enters the repo.
 | No RAG — stuff all research into the prompt | Simple | Grows unboundedly with usage; retrieval keeps the prompt small and the answer focused |
 | Agent-with-tools chat (chat calls the analyst live) | Always fresh | Minutes of latency + fresh cost per chat message; RAG over cached research answers instantly |
 
-Retrieval feeds `gemini-2.5-flash-lite` (Groq fallback) together with a live watchlist snapshot, so the
+Retrieval feeds `gemini-3.5-flash-lite` (Groq fallback) together with a live watchlist snapshot, so the
 chat can answer both "what did the research say" and "where is my portfolio now".
 
 ## 13. Voice input
@@ -171,7 +183,101 @@ chat can answer both "what did the research say" and "where is my portfolio now"
 
 ## 14. Secret handling
 
-API keys (`GEMINI_API_KEY`, `GROQ_API_KEY`) live only in `backend/.env` (gitignored, verified before every
-push). `.env.example` documents the shape without the value. The key never
-appears in code, docs, logs, or the frontend — the browser talks only to our
-backend.
+API keys (`GEMINI_API_KEY`, `GROQ_API_KEY`, `SMTP_PASSWORD`) live only in
+`backend/.env` (gitignored, verified before every push). `.env.example` documents
+the shape without the value. The key never appears in code, docs, logs, or the
+frontend — the browser talks only to our backend.
+
+`AUTH_PASSWORD` is the exception that needed extra care, because unlike an API
+key its *absence* used to be survivable: the app fell back to a documented
+default and kept serving. `.env.example` now ships an empty value, and the auth
+gate refuses both the empty case and the old published default by name (§16).
+Ephemeral copies count too — a `.env.bak` written during a password rotation is
+untracked but **not** gitignored, so one `git add .` would commit every key in
+it; rotation deletes its backups once the change is verified rather than leaving
+them around.
+
+## 15. Gold ETF coverage: a second agent, or a smarter first one?
+
+| Option | Pros | Cons |
+|---|---|---|
+| **A separate Gold Watch agent** ✅ | A gold ETF's price is a macro chain, not a company; the questions ("did the duty change?") have no analogue in equity research. Its own factor taxonomy, its own schema, its own materiality rules | A second agent to maintain |
+| Teach the Analyst about gold | One agent | The Analyst's whole shape — tool-call technicals, search company news, judge valuation — assumes an issuer. Branching inside it would mean two agents wearing one name |
+| Generic "macro mode" for any ETF | Reusable | Speculative generality: one gold ETF is in the watchlist, and the factor taxonomy that makes this useful is gold-specific |
+
+The decomposition `GOLDBEES = k × gold_usd × USDINR / 31.1035` is what justifies
+the split. It is not presentational — it is the only way to tell "gold moved"
+from "the rupee moved" from "the import duty changed", and those three need
+completely different news watched. In 2026 to date the ETF gained ~13% while
+dollar gold was flat; an agent watching only "gold news" would have explained
+none of it.
+
+### Discovery: RSS vs. AI search
+
+| Option | Pros | Cons |
+|---|---|---|
+| **RSS discovery + AI scoring** ✅ | Free and unmetered — the watcher cannot go blind; ~2 s for ~70 headlines; real source URLs; the model does judgment, which is what it is good at | Nine query strings to curate; no relevance filtering before the model sees it |
+| Gemini search grounding | Model filters relevance; citation URLs | Small free daily quota. Measured, not theorised: the first live run returned **zero events** |
+| Paid news API | Reliable, structured | A subscription for a personal dashboard |
+
+Kept as **best-effort enrichment**: grounding still runs when quota allows, but
+its absence changes nothing. A second-order benefit — because sources now come
+from RSS rather than Gemini's own citations, the synthesis step can fall back to
+Groq, which the Analyst's news phase can never do.
+
+### Alerting: what earns an interruption
+
+| Option | Pros | Cons |
+|---|---|---|
+| **Materiality bar + content-hash dedupe** ✅ | Emails only regime changes, clustered pushes, ≥2% moves, premium shifts, bias flips, RSI extremes. The same story is mailed once | Rules are judgment calls and need tuning |
+| Email every new event | Never miss anything | Muted within a week — and a muted watcher is worse than none |
+| Daily digest only | Predictable | A duty change at 10am should not wait until 6pm |
+
+Both exist: the bar drives event-triggered mail, `--digest` forces a scheduled
+summary. Dedupe is the `gold_events` primary key (SHA-1 of factor + normalised
+headline + source), so it is structural — a duplicate insert is a no-op by
+construction, not by remembering to check.
+
+### Surfacing it: reuse the drawer, or build a panel?
+
+| Option | Pros | Cons |
+|---|---|---|
+| **Project the sweep into the Analyst's schema** ✅ | Zero frontend work; the StockDrawer, the per-day cache and the RAG indexer all work unchanged. Opening GOLDBEES simply shows the right analysis | Constrained to the Analyst's field shape; the factor board and scenarios have no UI |
+| A dedicated React gold panel | Shows the factor board, attribution and scenario chart properly | A new component, new API client methods, new nav — and the drawer would *still* need routing, or it keeps showing equity analysis for a gold ETF |
+| Leave it CLI/API-only | Nothing to build | The dashboard would keep showing the wrong analysis for a watchlist holding |
+
+Routing uses an **explicit symbol list**, not a substring match on "GOLD":
+`GOLDIAM` is a jewellery equity and a naive match would send it to a macro agent.
+
+## 16. Failing closed on auth
+
+| Option | Pros | Cons |
+|---|---|---|
+| **Refuse to start without `AUTH_PASSWORD`** ✅ | The failure is loud, immediate and precedes the first request; the message prints the exact fix | A fresh clone won't boot until configured — which looks like a broken build the first time it bites |
+| Fall back to a documented default (the old behaviour) | Always starts | A missing or renamed `.env` silently downgrades the app from "locked" to "open on a password printed in the README", while still serving traffic |
+| Warn in the logs and continue | Visible, non-blocking | Nobody reads logs of a working app. The whole failure mode is that it *looks* fine |
+
+Rejecting the old example value **by name** matters as much as rejecting the
+empty case: `.env.example` shipped a working password, so anyone copying it
+verbatim got a login whose credentials are public in the repo.
+
+Weak-but-valid passwords **warn rather than fail** — a length rule that hard-fails
+can lock the owner out of their own dashboard, and this app has exactly one user
+who is also its operator. Loud, not fatal, is the right severity there.
+
+Rotating `AUTH_PASSWORD` alone does not end existing sessions: JWTs are signed
+with `jwt_secret.key` and stay valid for their 24-hour TTL. A real rotation
+deletes that file too. This is the documented trade-off of stateless JWTs from
+§11 finally being paid.
+
+## 17. Network exposure for phone access
+
+| Option | Pros | Cons |
+|---|---|---|
+| **LAN-only: `vite host: true`, backend on `127.0.0.1`** ✅ | Works on any device on the same Wi-Fi in seconds; no third party; the API is reachable only through the dev-server proxy, never directly | Same-network only; the router's DHCP lease can change the IP |
+| Tunnel (cloudflared / ngrok) | A public URL from anywhere | Puts a single-user app with no TLS termination of its own, no rate limiting and a hand-set password on the open internet |
+| Deploy to a host (Render / Railway / Fly) | Permanent URL, real TLS | Real work: build pipeline, managed secrets, a hosted DB or a persistent disk for SQLite |
+
+Only the SPA was bound to `0.0.0.0`. Exposing uvicorn as well would have been one
+extra flag and strictly worse: the proxy already reaches the backend over
+loopback, so binding it wide would add attack surface for no capability.

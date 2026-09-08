@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from .. import market_data, rag, recommend
 from ..agents.analyst import analyze_stock
+from ..agents.gold_watch import is_gold_etf
 from ..agents.runner import AgentUnavailable
 from ..db import AiAnalysis, WatchlistItem, get_db
 
@@ -81,7 +82,15 @@ def analysis(symbol: str, refresh: bool = False, db: Session = Depends(get_db)):
 
     name = _resolve_name(symbol, db)
     try:
-        result = analyze_stock(symbol, name)
+        if is_gold_etf(symbol):
+            # A gold ETF has no earnings or management for the equity analyst to
+            # read. Route it to the Gold Watch agent, projected into the same
+            # payload shape so the drawer renders it unchanged.
+            from ..agents.gold_alerts import analyze_gold_etf
+
+            result = analyze_gold_etf(symbol, name)
+        else:
+            result = analyze_stock(symbol, name)
     except AgentUnavailable as e:
         raise HTTPException(503, str(e))
 

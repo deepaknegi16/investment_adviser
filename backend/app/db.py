@@ -74,6 +74,44 @@ class ChatLog(Base):
     answer_chars = Column(Integer)
 
 
+class GoldEvent(Base):
+    """One gold-factor news event the watcher has already seen.
+
+    Primary key is a hash of factor+headline+source, so the same story picked
+    up on three consecutive runs is stored (and emailed) exactly once.
+    """
+
+    __tablename__ = "gold_events"
+    id = Column(String, primary_key=True)  # gold_watch.event_key()
+    first_seen = Column(DateTime, default=dt.datetime.utcnow)
+    event_date = Column(String)            # publication date as reported
+    factor = Column(String, index=True)
+    headline = Column(Text, nullable=False)
+    source = Column(String)
+    url = Column(Text)
+    direction = Column(String)             # bullish | bearish | neutral
+    impact = Column(String)                # high | medium | low
+    horizon = Column(String)
+    why_it_matters = Column(Text)
+    alerted = Column(Integer, default=0)   # 1 once it has gone out by email
+
+
+class GoldWatchRun(Base):
+    """Audit trail of watcher sweeps — what it saw, what it decided, what it sent."""
+
+    __tablename__ = "gold_watch_runs"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ts = Column(DateTime, default=dt.datetime.utcnow)
+    bias = Column(String)                  # bullish | neutral | bearish
+    conviction = Column(String)
+    etf_price = Column(Float)
+    n_events = Column(Integer)
+    n_new = Column(Integer)
+    emailed = Column(Integer, default=0)   # 1 if an alert was sent
+    email_error = Column(Text)
+    payload_json = Column(Text, nullable=False)
+
+
 class EvalRun(Base):
     """Stored results of eval_rag.py runs, surfaced by /api/metrics."""
 

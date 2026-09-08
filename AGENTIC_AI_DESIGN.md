@@ -40,19 +40,25 @@ flowchart LR
     subgraph agents [Agents - model-in-a-loop]
         A[Analyst Agent\napp/agents/analyst.py]
         S[Screener Agent\napp/agents/screener.py]
+        W[Gold Watch Agent\napp/agents/gold_watch.py]
     end
     subgraph shared [Shared machinery]
         R[runner.py\n3 primitives + resilience]
         T[tools.py\nfunction tools]
+    end
+    subgraph feeds [Discovery - no model, no quota]
+        N[gold_news.py\nRSS across 9 factor buckets]
     end
     subgraph retrieval [Retrieval - grounded, not agentic]
         C[Chat\napp/routers/chat.py]
         G[RAG index\napp/rag.py + rag_chunks table]
         D[File uploads\napp/routers/documents.py]
     end
-    A --> R; S --> R; R --> T
+    A --> R; S --> R; W --> R; R --> T
+    W --> N
     A -- indexes results --> G
     S -- indexes results --> G
+    W -- indexes results --> G
     D -- indexes files --> G
     C -- retrieves from --> G
 ```
@@ -61,13 +67,21 @@ flowchart LR
 |---|---|---|---|
 | **Analyst Agent** | Full agent (3-phase pipeline) | User opens a stock / "Refresh AI analysis" | `gemini-3.5-flash` |
 | **Screener Agent** | Hybrid: code pre-screen + one model call | Top-20 table / "Refresh picks" | `gemini-3.5-flash-lite` |
+| **Gold Watch Agent** | Hybrid: RSS discovery + one model call | Cron sweep, `POST /api/gold/watch`, or a gold ETF opened in the drawer | `gemini-3.5-flash`, Groq fallback |
 | **Research chat** | RAG (retrieve-then-answer, no tools) | Every chat message (typed or voice) | `gemini-3.5-flash-lite`, Groq fallback |
 | **RAG index** | Embedding store | Fed automatically by every agent run + file uploads | `gemini-embedding-001` |
 
 A deliberate design rule runs through all of it: **arithmetic in code, judgment
 in the model.** Anything deterministic (returns, SMAs, RSI, screening scores,
-status colors) is computed in Python for free in milliseconds; the model is
-spent only where actual judgment is needed.
+status colors, the gold factor decomposition and its scenario projection) is
+computed in Python for free in milliseconds; the model is spent only where actual
+judgment is needed.
+
+The Gold Watch adds a second rule the others did not need: **retrieval in code,
+relevance in the model.** The Analyst may go blind on news when the search quota
+runs out — it is on-demand, and a user watching a spinner learns something is
+wrong. A monitor that runs unattended cannot afford that, so its discovery path
+has no metered dependency at all (§9.1).
 
 ---
 
@@ -485,6 +499,57 @@ These are real events from bringing the stack up, each now encoded in code:
 
 ---
 
+## 9.1 The Gold Watch, and what it taught about unattended agents
+
+The first two agents are **on-demand**: a person clicks, waits, and sees the
+result. That user is also the error detector — a spinner that never resolves, or
+a news panel that says "search quota reached", is visible feedback. The Gold
+Watch is the first agent designed to run when nobody is looking, and that single
+difference invalidated three assumptions the earlier design was built on.
+
+**1. Degrading silently is a bug, not a feature.** The Analyst deliberately
+degrades to technicals-only when Gemini's search grounding is exhausted — good
+behaviour for an interactive panel. The Gold Watch inherited that pattern and its
+first live run produced a confident, well-written analysis containing **zero news
+events**, because the free grounding quota was already spent. Nothing errored.
+The output looked fine. For a monitor, that is the worst possible failure: it
+reports "all quiet" whether or not the world is quiet. Discovery moved to RSS —
+free, unmetered, ~2 s for ~70 headlines — and the model was demoted from
+*finding* the news to *scoring* it.
+
+**2. Sources should not come from the thing being scored.** Once the feed is the
+source of record, a whole class of hallucination becomes structurally
+impossible. Step 5 of the pipeline matches every synthesised event back to the
+feed entry by normalised headline and **overwrites** its URL, source and date;
+anything unmatched loses its URL rather than keeping an invented one. The Analyst
+cannot do this — its citations *are* the model's output.
+
+A second benefit fell out of it. The Analyst's synthesis is pinned to Gemini
+(`groq_fallback=False`) because its sources come from Gemini's grounding
+metadata, so a Groq fallback would silently drop them. The Gold Watch's sources
+come from RSS, so its synthesis can fall back to Groq and keep working through a
+Gemini outage entirely.
+
+**3. An agent that reports everything reports nothing.** The other two agents
+answer a question that was just asked, so relevance is given. A monitor must
+decide, unprompted, whether anything is worth an interruption — and get it right
+often enough that the alert stays trusted. Hence the materiality bar (regime
+change, clustered mediums, a ±2% session move, a ±2% monthly move in the
+domestic premium, a bias flip, an RSI extreme) and a content-hash primary key (truncated SHA-1) so
+the same story is mailed exactly once. The bar is the product. A watcher that
+emails every headline gets muted within a week, and a muted watcher is worse
+than no watcher, because you believe you are covered.
+
+**The factor decomposition is what makes any of it meaningful.** `GOLDBEES = k ×
+gold_usd × USDINR / 31.1035` splits the price into three independently-driven
+legs, so "the ETF is up" resolves into *which* leg moved and therefore which
+news matters. It is testable, and it tested true: `k` steps +8.3% across May
+2026, matching India's 6% → 15% import-duty hike. Over 2026 to date the ETF
+gained ~13% while dollar gold was flat — a fact no amount of reading "gold news"
+would have surfaced.
+
+---
+
 ## 10. Trust boundaries and safety
 
 - **Keys never leave the backend.** The browser talks only to FastAPI; every
@@ -511,7 +576,16 @@ These are real events from bringing the stack up, each now encoded in code:
   `TOOL_IMPLS`. The analyst can use it on the next run — no other file changes.
 - **Add an agent**: compose the three runner primitives with your own prompts
   and schema (the screener shows the minimal shape: one
-  `structured_synthesis` call).
+  `structured_synthesis` call; the Gold Watch shows the monitor shape —
+  deterministic snapshot, unmetered discovery, one scoring call, a dedupe key
+  and a materiality bar).
+- **Watch a new gold factor**: add a bucket to `FACTORS` in `gold_watch.py` and
+  its queries to `FACTOR_QUERIES` in `gold_news.py`. The schema enum, the
+  dashboard breakdown and the alert grouping all follow from that one name.
+- **Route another instrument to a specialist agent**: add its symbol to
+  `GOLD_ETF_SYMBOLS` (or copy the pattern) and provide an adapter into
+  `ANALYSIS_SCHEMA`. Matching the existing schema is what buys you the drawer,
+  the per-day cache and the RAG indexer for free.
 - **Swap the AI provider (again)**: reimplement the four functions in
   `runner.py` (`tool_research`, `web_research`, `structured_synthesis`,
   `simple_response`) — history shows nothing else needs to change.
