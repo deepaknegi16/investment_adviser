@@ -281,3 +281,72 @@ deletes that file too. This is the documented trade-off of stateless JWTs from
 Only the SPA was bound to `0.0.0.0`. Exposing uvicorn as well would have been one
 extra flag and strictly worse: the proxy already reaches the backend over
 loopback, so binding it wide would add attack surface for no capability.
+
+## 18. Guardrails and evaluation for an unattended agent
+
+### Enforcement: drop, flag, or fail?
+
+| Option | Pros | Cons |
+|---|---|---|
+| **Flag and keep** ✅ | Nothing disappears; the reader sees both the event and the doubt; violations stay auditable in `guardrail_violations` | Junk still reaches the inbox, labelled |
+| Drop silently, count it | Inbox stays clean | A noisy model quietly shrinks the report, and a monitor that silently omits things is worse than one that shows you doubt |
+| Fail the whole sweep | Regressions are impossible to miss | One bad headline costs the entire sweep — far too brittle for a cron job |
+
+One carve-out from "keep everything": an unverifiable **URL** is stripped rather
+than labelled, because a link cannot be marked untrusted in a way that survives a
+click. The event text stays, the href goes, and the drawer's existing
+`url ? <a> : <b>` renders it as plain text with no frontend change.
+
+### Ground truth: labelled set, judge, or self-consistency?
+
+| Option | Pros | Cons |
+|---|---|---|
+| **Hand-labelled golden set + judge for prose** ✅ | Deterministic and free for the structured tags; a model judge only where the output is free text and there is no single right answer | ~42 labels to write and maintain by hand |
+| LLM judge for everything | No labelling | Burns quota, non-deterministic, and a judge sharing the agent's blind spots agrees with its mistakes |
+| Self-consistency (run twice, compare) | Zero labelling, catches flakiness | A model that is confidently and consistently wrong scores perfectly |
+
+The golden set deliberately includes **12 real off-topic headlines** the feeds
+actually returned (Solana ETF flows, Samsung layoffs, a cotton import-duty
+waiver). Roughly 29% of live feed output is noise, so rejecting it is as much of
+the job as labelling the rest — and "cotton import duty waiver" is exactly the
+near-miss that a keyword-matching agent would tag as `india_policy`.
+
+### What to floor, and what to merely report
+
+The first run of the harness failed at 0.267 factor accuracy while **every label
+the agent had produced was correct**. The metric was wrong, not the agent: it
+counted a relevant headline the agent chose not to surface as a tagging error,
+when `SYNTHESIS_SYSTEM` explicitly instructs it to select the ~12 most material
+items and discard duplicates.
+
+Precision and recall had to be separated, and only precision floored:
+
+| Metric | Floored? | Why |
+|---|---|---|
+| Provenance | **Yes, at 1.0** | The shortfall is literally the hallucination rate. Zero tolerance |
+| Factor precision | Yes, 0.70 (only when ≥ 8 items tagged) | Below that sample a ratio is noise |
+| Noise rejection | Yes, 0.75 | Low-variance and high-value |
+| Events produced | Yes, ≥ 3 | Collapse detector — "the agent stopped finding news" |
+| Coverage | **No** | Selection is by design; it varied 8 → 3 → 4 events on identical input. A floor here is a flaky test |
+| Impact precision | **No** | "high vs medium" is the most subjective label in the set, and the golden values are one person's judgment |
+
+Resisting the urge to lower a floor until the suite passes is the whole point of
+having floors.
+
+### Why no pytest
+
+There is no test infrastructure anywhere in this repo — no `tests/`, no
+`conftest.py`, no CI, and no test dependency in `requirements.txt`. The
+established convention is a runnable eval script (`eval_rag.py`), so `eval_gold.py`
+matches it. The adversarial suite needs no model and no network, so it runs in
+under a second and is usable as a pre-push check; unlike `eval_rag.py` it exits
+non-zero on failure, because it guards a safety layer rather than reporting a
+quality score.
+
+### Why a separate `gold_eval_runs` table
+
+`/api/metrics` renders the newest `eval_runs` row as the RAG scorecard, and
+`EvalRun` has no run-type discriminator. Writing gold results there would have
+silently replaced the RAG numbers with numbers of a different shape — a
+dashboard quietly showing the wrong thing, which is the failure class this whole
+change exists to prevent.

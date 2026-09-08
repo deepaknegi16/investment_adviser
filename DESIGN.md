@@ -328,6 +328,61 @@ no special case. The symbol list is **explicit**, not a substring match on
 "GOLD" — `GOLDIAM` is a jewellery equity and would be misrouted into a macro
 agent by a naive match.
 
+### Guardrails and evaluation
+
+An on-demand agent has a human error detector: someone clicked, someone is
+waiting, and a wrong answer is seen. The Gold Watch has none, so its output is
+checked mechanically before it reaches anyone.
+
+The governing rule is **flag, don't drop**. A violation adds trust metadata and
+a recorded reason; it never deletes the model's work, because silently shrinking
+a report is how a monitor lies to you. The single exception is an unverifiable
+*link* — a URL cannot be "marked untrusted", since a reader still clicks it, so
+an unsourced event keeps its text and loses its href. The drawer already renders
+`url ? <a> : <b>`, so it degrades to plain text on its own.
+
+| Guard | Catches | On a hit |
+|---|---|---|
+| Provenance | Event headline in no feed | `trust=unverified`, URL stripped |
+| Enum validity | `factor`/`direction`/`impact`/`horizon` out of range — **the Groq fallback only advises schemas, it does not enforce them** | coerce to safest, `trust=suspect` |
+| Date sanity | Future-dated or older than 45 days | `trust=suspect` |
+| Injection | RSS headline reading as an instruction | item kept but labelled in the prompt |
+| Advice language | Directives ("you should buy") and guarantees | disclaimer appended, never a silent rewrite |
+| Numeric drift | Prose citing a price/return/premium that contradicts the snapshot | flagged |
+| Feed health | Too few headlines, or dead buckets | **a distinct "watcher degraded" email** |
+| Send limits | 6 alerts/24 h, 45 min cooldown, >70% high-impact | send suppressed, reason recorded on the run |
+
+Two of these deserve their reasoning stated.
+
+**Untrusted input is now delimited.** RSS titles are third-party text that was
+being interpolated raw into a markdown prompt, so a headline containing `###`
+could forge the prompt's own structure. `sanitize_feed()` strips that structure
+and `as_prompt_block()` wraps the feed in explicit markers that tell the model
+the block is data to classify, never instructions.
+
+**Silence is now always explained.** `gold_news._fetch` swallows feed errors and
+returns `[]`, so nine dead feeds and a genuinely quiet market produced identical
+output: no events, no alert. That is the silent-blindness failure the RSS switch
+was meant to prevent, reintroduced one layer down. `check_feed_health()` turns it
+into its own alert — a watcher must never be quiet for a reason it could report.
+
+**Evaluation** lives in `backend/eval_gold.py`, mirroring `eval_rag.py`'s
+conventions (runnable script, no pytest — there is no test infrastructure in this
+repo). Four suites:
+
+| Suite | Measures | Cost |
+|---|---|---|
+| Adversarial | 12 fixtures that must each trip a named guard | none — no model, no network |
+| Tagging | factor/direction/impact **precision** and noise rejection vs `gold_eval_golden.json` (42 hand-labelled real headlines, 29% of them off-topic) | one model call |
+| Provenance | share of events traceable to a supplied headline — **floored at 1.0**, since the shortfall is the hallucination rate | free |
+| Prose judge | numeric faithfulness and advice-neutrality of the bias summary, 1–5 | one model call |
+
+Floors are set on precision, noise rejection and provenance. **Coverage is
+reported but not floored**: the agent is instructed to select the ~12 most
+material items, so a relevant headline it skipped is a decision, not an error —
+conflating the two made the harness's first run fail at 0.267 while every label
+it had actually produced was correct.
+
 ### Scenario projection (`gold_scenarios.py`)
 
 Forecasting the ETF directly is guesswork; forecasting its three inputs is a
@@ -350,7 +405,9 @@ spread between the scenarios, which is the honest headline.
 | `chat_log` | `id` | One row per chat turn — provider, retrieval mode, top score, latency |
 | `eval_runs` | `id` | Stored `eval_rag.py` results, surfaced by `/api/metrics` |
 | `gold_events` | `id` = SHA-1(factor+headline+source) | Every gold factor event seen, with direction/impact/horizon and whether it was emailed. The hash key **is** the dedupe mechanism |
-| `gold_watch_runs` | `id` | Audit trail per sweep: bias, ETF price, events found/new, emailed, email error, full payload |
+| `gold_watch_runs` | `id` | Audit trail per sweep: bias, ETF price, events found/new, emailed, email error, suppression reason, violation count, full payload |
+| `guardrail_violations` | `id` | Every guardrail hit, with severity and the run that produced it. Flag-don't-drop only means something if the flags are kept |
+| `gold_eval_runs` | `id` | `eval_gold.py` results. Deliberately **not** `eval_runs`: `/api/metrics` renders the latest row there as the RAG scorecard, so gold results would silently replace it |
 
 In-process caches (not persisted): price history 10 min, analyst consensus 24 h.
 
@@ -381,6 +438,8 @@ than by a query — dedupe cannot be forgotten at a call site.
 | `GET /api/gold/events[?factor=&limit=]` | Stored factor events |
 | `GET /api/gold/runs` | Sweep history with bias and email outcome |
 | `GET /api/gold/alerts/config` · `POST /api/gold/alerts/test` | SMTP config state; send a test email |
+| `GET /api/gold/violations[?kind=&limit=]` | Guardrail audit trail — what the agent got wrong, and how often |
+| `GET /api/gold/eval` | Latest `eval_gold.py` results |
 
 ## 6. Cost, resilience, security
 
@@ -389,6 +448,12 @@ than by a query — dedupe cannot be forgotten at a call site.
   thinned tool payloads (≤ ~60 chart points), and a hard turn limit.
 - **Yahoo fragility is contained:** every Yahoo call lives in `market_data.py`
   behind caches; if yfinance breaks, only that module changes.
+- **Model output is not trusted by default.** Every field the Gold Watch emits is
+  checked before use (§3c) — enums because the Groq fallback does not enforce
+  schemas, provenance because a plausible URL is not a real one, and prose
+  because a system prompt saying "not financial advice" is a request, not a
+  guarantee. `app/safety.py` holds the one disclaimer string and the advice
+  scanner that checks whether the model listened.
 - **Quota independence for the watcher:** gold news discovery is RSS, so the
   standing monitor keeps working after the daily AI search quota is exhausted —
   the component that must not fail silently has no metered dependency.

@@ -94,6 +94,7 @@ class GoldEvent(Base):
     horizon = Column(String)
     why_it_matters = Column(Text)
     alerted = Column(Integer, default=0)   # 1 once it has gone out by email
+    trust = Column(String, default="unknown")  # ok | unverified | suspect | unknown
 
 
 class GoldWatchRun(Base):
@@ -109,6 +110,40 @@ class GoldWatchRun(Base):
     n_new = Column(Integer)
     emailed = Column(Integer, default=0)   # 1 if an alert was sent
     email_error = Column(Text)
+    suppressed_reason = Column(Text)       # why an alert was NOT sent, if it wasn't
+    n_violations = Column(Integer, default=0)
+    payload_json = Column(Text, nullable=False)
+
+
+class GuardrailViolation(Base):
+    """Every guardrail hit, kept rather than discarded.
+
+    The point of flag-don't-drop is that suppressed content stays auditable —
+    this table is where "what did the agent get wrong, and how often" lives.
+    """
+
+    __tablename__ = "guardrail_violations"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ts = Column(DateTime, default=dt.datetime.utcnow)
+    run_id = Column(Integer, index=True)   # GoldWatchRun.id
+    kind = Column(String, index=True)      # unsourced | injection_suspected | ...
+    severity = Column(String)              # low | medium | high
+    detail = Column(Text)
+    event_id = Column(String, nullable=True)
+
+
+class GoldEvalRun(Base):
+    """Results of eval_gold.py runs.
+
+    Deliberately NOT the shared eval_runs table: /api/metrics reads the latest
+    EvalRun row to render the RAG scorecard, so gold results written there would
+    silently replace those numbers with ones of a different shape.
+    """
+
+    __tablename__ = "gold_eval_runs"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ts = Column(DateTime, default=dt.datetime.utcnow)
+    passed = Column(Integer, default=0)    # 1 if every adversarial fixture caught
     payload_json = Column(Text, nullable=False)
 
 
@@ -137,8 +172,33 @@ SEED_WATCHLIST = [
 ]
 
 
+# create_all() never ALTERs an existing table, and this app has no migration
+# tool. Columns added after a table already exists in someone's adviser.db are
+# listed here and added idempotently on startup.
+_ADDED_COLUMNS = [
+    ("gold_events", "trust", "TEXT DEFAULT 'unknown'"),
+    ("gold_watch_runs", "suppressed_reason", "TEXT"),
+    ("gold_watch_runs", "n_violations", "INTEGER DEFAULT 0"),
+]
+
+
+def _migrate() -> None:
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    existing = set(inspector.get_table_names())
+    with engine.begin() as conn:
+        for table, column, ddl in _ADDED_COLUMNS:
+            if table not in existing:
+                continue  # create_all just made it with the column present
+            cols = {c["name"] for c in inspector.get_columns(table)}
+            if column not in cols:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
+
+
 def init_db() -> None:
     Base.metadata.create_all(engine)
+    _migrate()
     with SessionLocal() as db:
         if db.query(WatchlistItem).count() == 0:
             for symbol, name in SEED_WATCHLIST:

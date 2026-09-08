@@ -14,8 +14,10 @@ from ..db import (
     AiPicks,
     ChatLog,
     EvalRun,
+    GoldEvalRun,
     GoldEvent,
     GoldWatchRun,
+    GuardrailViolation,
     RagChunk,
     WatchlistItem,
     get_db,
@@ -75,6 +77,19 @@ def metrics(db: Session = Depends(get_db)):
     last_gold = gold_runs[0] if gold_runs else None
     email_cfg = notify.config_status()
 
+    # --- guardrails ---
+    viols = db.query(GuardrailViolation).all()
+    viols_24h = [v for v in viols if v.ts and v.ts >= day_ago]
+    v_by_kind: dict = {}
+    v_by_severity: dict = {}
+    for v in viols_24h:
+        v_by_kind[v.kind or "?"] = v_by_kind.get(v.kind or "?", 0) + 1
+        v_by_severity[v.severity or "?"] = v_by_severity.get(v.severity or "?", 0) + 1
+    trusted_events = sum(1 for e in gold_events if (e.trust or "unknown") == "ok")
+    checked_events = sum(1 for e in gold_events if (e.trust or "unknown") != "unknown")
+    suppressed = [r for r in gold_runs if r.suppressed_reason]
+    latest_gold_eval = db.query(GoldEvalRun).order_by(GoldEvalRun.id.desc()).first()
+
     return {
         "rag": {
             "total_chunks": total_chunks,
@@ -116,6 +131,23 @@ def metrics(db: Session = Depends(get_db)):
             "email_configured": email_cfg["configured"],
             "email_missing_config": email_cfg["missing"],
             "email_to": email_cfg["to"],
+        },
+        "guardrails": {
+            "violations_total": len(viols),
+            "violations_last_24h": len(viols_24h),
+            "by_kind_24h": v_by_kind,
+            "by_severity_24h": v_by_severity,
+            "events_scored": checked_events,
+            "events_trusted": trusted_events,
+            "trusted_rate_pct": round(100 * trusted_events / checked_events, 1) if checked_events else None,
+            "alerts_suppressed": len(suppressed),
+            "last_suppressed_reason": suppressed[0].suppressed_reason if suppressed else None,
+        },
+        "gold_eval": {
+            "latest_run_at": latest_gold_eval.ts.isoformat(timespec="seconds") if latest_gold_eval else None,
+            "passed": bool(latest_gold_eval.passed) if latest_gold_eval else None,
+            "results": json.loads(latest_gold_eval.payload_json) if latest_gold_eval else None,
+            "how_to_run": "backend: .venv/bin/python eval_gold.py [--adversarial] [--no-judge]",
         },
         "eval": {
             "latest_run_at": latest_eval.ts.isoformat(timespec="seconds") if latest_eval else None,

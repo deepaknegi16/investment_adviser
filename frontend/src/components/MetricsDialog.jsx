@@ -53,6 +53,8 @@ export default function MetricsDialog({ onClose }) {
 
   const evalResults = data?.eval?.results;
   const gold = data?.gold_watch;
+  const guards = data?.guardrails;
+  const goldEval = data?.gold_eval;
 
   return (
     <div className="dialog-backdrop" onClick={onClose}>
@@ -105,6 +107,11 @@ export default function MetricsDialog({ onClose }) {
                 label="Gold events"
                 value={gold?.events_tracked ?? "—"}
                 sub={gold ? `${gold.runs_total} sweeps · ${gold.alerts_sent} alerts sent` : "no sweeps yet"}
+              />
+              <Tile
+                label="Trusted events"
+                value={guards?.trusted_rate_pct != null ? `${guards.trusted_rate_pct}%` : "—"}
+                sub={guards ? `${guards.violations_last_24h} guardrail hits in 24h` : "no data"}
               />
             </div>
 
@@ -161,6 +168,46 @@ export default function MetricsDialog({ onClose }) {
                 ) : (
                   <span className="muted">
                     no sweeps yet — run backend/gold_watch_run.py
+                  </span>
+                )}
+              </div>
+
+              <div className="mini-panel">
+                <h3>Guardrails</h3>
+                {guards?.events_scored ? (
+                  <>
+                    <div className="kv">
+                      <dt className="muted">events checked</dt>
+                      <dd>{guards.events_scored}</dd>
+                    </div>
+                    <div className="kv">
+                      <dt className="muted">trusted</dt>
+                      <dd>
+                        {guards.events_trusted}
+                        {guards.trusted_rate_pct != null ? ` (${guards.trusted_rate_pct}%)` : ""}
+                      </dd>
+                    </div>
+                    <div className="kv">
+                      <dt className="muted">alerts suppressed</dt>
+                      <dd>{guards.alerts_suppressed}</dd>
+                    </div>
+                    {guards.last_suppressed_reason && (
+                      <div className="kv">
+                        <dt className="muted">last suppression</dt>
+                        <dd>{guards.last_suppressed_reason}</dd>
+                      </div>
+                    )}
+                    <Breakdown title="Violations (24h) by kind" data={guards.by_kind_24h} />
+                    {goldEval?.latest_run_at && (
+                      <div className="kv" style={{ marginTop: 6 }}>
+                        <dt className="muted">last gold eval</dt>
+                        <dd>{goldEval.passed ? "PASS" : "FAIL"} · {goldEval.latest_run_at?.replace("T", " ")}</dd>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <span className="muted">
+                    no checked sweeps yet — run backend/gold_watch_run.py
                   </span>
                 )}
               </div>

@@ -33,7 +33,8 @@ import os
 import re
 from typing import Any, Dict, List, Tuple
 
-from .. import gold_factors, gold_news
+from .. import gold_factors, gold_news, safety
+from . import gold_guardrails as gr
 from .runner import AgentUnavailable, structured_synthesis, web_research
 
 GOLD_MODEL = os.environ.get("GOLD_WATCH_MODEL", os.environ.get("ANALYST_MODEL", "gemini-3.5-flash"))
@@ -190,7 +191,8 @@ Ground rules:
 - Prefer the last 14 days. Drop anything older than 45 days unless it is still
   the live driver.
 - No price targets you cannot defend from the quantitative snapshot or a cited
-  forecast. This is research, not personalised financial advice."""
+  forecast.
+- """ + safety.PROMPT_RULE
 
 
 def _news_prompt(today: str, buckets: List[str]) -> str:
@@ -210,8 +212,7 @@ def _news_prompt(today: str, buckets: List[str]) -> str:
 
 def event_key(event: Dict[str, Any]) -> str:
     """Stable id for dedupe: same story from the same source on the same day."""
-    norm = re.sub(r"[^a-z0-9 ]+", "", (event.get("headline") or "").lower())
-    norm = " ".join(norm.split())[:120]
+    norm = gr.normalise_headline(event.get("headline") or "")
     raw = f"{event.get('factor','')}|{norm}|{(event.get('source') or '').lower()}"
     return hashlib.sha1(raw.encode()).hexdigest()[:16]
 
@@ -222,7 +223,13 @@ def run_watch(buckets: List[str] | None = None, enrich: bool = True) -> Dict[str
     buckets = buckets or list(FACTORS.keys())
 
     snap = gold_factors.snapshot()
-    headlines = gold_news.collect(buckets=buckets, days=14, per_factor=8)
+    raw_headlines = gold_news.collect(buckets=buckets, days=14, per_factor=8)
+
+    # RSS titles are third-party text headed straight for a prompt. Strip any
+    # prompt structure out of them and flag instruction-like items before the
+    # model ever sees them.
+    headlines, violations = gr.sanitize_feed(raw_headlines)
+    violations += gr.check_feed_health(headlines, buckets)
     feed_block = gold_news.as_prompt_block(headlines)
 
     # Best-effort AI enrichment on top of the feed. One grounded call, not one
@@ -278,22 +285,27 @@ def run_watch(buckets: List[str] | None = None, enrich: bool = True) -> Dict[str
         groq_fallback=True,  # discovery is RSS, so Groq can do the scoring alone
     )
 
-    # Repair hallucinated links by matching back to the feed we actually read.
-    by_headline = {
-        re.sub(r"[^a-z0-9]+", "", h["headline"].lower())[:60]: h for h in headlines
-    }
+    # Provenance, enum and date guards. The feed is the source of record: an
+    # event that matches nothing in it keeps its text but loses its URL, because
+    # a link cannot be "marked untrusted" — a reader still clicks it.
     for e in result.get("events", []):
-        key = re.sub(r"[^a-z0-9]+", "", (e.get("headline") or "").lower())[:60]
-        match = by_headline.get(key)
-        if match:
-            e["url"], e["source"], e["date"] = match["url"], match["source"], match["date"]
-        elif e.get("url") and not e["url"].startswith("http"):
-            e["url"] = ""
         e["id"] = event_key(e)
         e["factor_label"] = FACTORS.get(e.get("factor", ""), {}).get("label", e.get("factor", ""))
+    checked, event_violations = gr.check_events(
+        result.get("events", []), headlines, set(FACTORS)
+    )
+    violations += event_violations
+    # factor may have been coerced, so the label is refreshed after the check
+    for e in checked:
+        e["factor_label"] = FACTORS.get(e.get("factor", ""), {}).get("label", e.get("factor", ""))
+    result["events"] = checked
+
+    violations += gr.check_prose(result, snap)
 
     result["snapshot"] = snap
     result["generated_at"] = dt.datetime.now().isoformat(timespec="seconds")
     result["headlines_scanned"] = len(headlines)
     result["ai_search_used"] = search_ok
+    result["violations"] = [v.as_dict() for v in violations]
+    result["guardrails"] = gr.summarise(violations)
     return result

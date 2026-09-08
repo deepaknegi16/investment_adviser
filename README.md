@@ -142,6 +142,24 @@ cd backend && .venv/bin/python gold_watch_run.py --test-email
 45 18   * * 5    cd /path/to/backend && .venv/bin/python gold_watch_run.py --digest >> gold_watch.log 2>&1
 ```
 
+**Guardrails + eval** — the watcher runs unattended, so its output is checked
+before it reaches you: provenance (an event that matches no feed keeps its text
+but loses its link), enum validity (the Groq fallback does not enforce schemas),
+date sanity, prompt-injection detection on RSS headlines, advice-language and
+numeric-drift scanning on the prose, alert-rate limits, and a **feed-health check
+that sends a distinct "watcher degraded" email rather than reporting calm when
+the feeds are dead**. Nothing is silently dropped — violations are stored in
+`guardrail_violations` and surfaced in `/api/metrics`.
+
+```bash
+cd backend
+.venv/bin/python eval_gold.py --adversarial   # 12 guardrail fixtures, no model, <1s
+.venv/bin/python eval_gold.py --no-judge      # + tagging accuracy vs the golden set
+.venv/bin/python eval_gold.py                 # + LLM judge on the prose
+```
+
+Exits non-zero on failure, so it works as a pre-push check.
+
 **API** — `GET /api/gold/factors`, `/history`, `/scenarios`, `/sensitivity`, `/events`,
 `/runs`, `/latest`, `/alerts/config`; `POST /api/gold/watch`, `/alerts/test`.
 

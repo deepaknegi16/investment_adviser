@@ -548,6 +548,36 @@ news matters. It is testable, and it tested true: `k` steps +8.3% across May
 gained ~13% while dollar gold was flat — a fact no amount of reading "gold news"
 would have surfaced.
 
+### What the adversarial suite caught
+
+Building the guardrails surfaced three things that reading the code had not.
+
+**The repair step had a hole shaped like a real URL.** `gold_watch.py` overwrote
+`url`/`source`/`date` from the matched feed entry, and otherwise cleared a URL
+only if it failed a `startswith("http")` sniff. An event whose headline appeared
+in no feed but carried a plausible `https://…` link passed through untouched and
+would have been emailed as sourced. The fixture that catches this is now the
+first one in the suite.
+
+**Enum enforcement was provider-dependent.** Gemini gets
+`response_json_schema`; the Groq fallback gets the schema stringified into a
+prompt with `response_format={"type": "json_object"}` — enums and `required` are
+advisory there. The Gold Watch is the one agent that can fall back to Groq, so
+out-of-range values were a live risk on exactly the path taken when Gemini is
+down. The enum fixture fails immediately if that coercion is removed.
+
+**The metric was wrong before the agent was.** The tagging suite's first run
+reported 0.267 factor accuracy — alarming until the confusion list showed every
+miss was `dropped`, not mislabelled. The agent is told to select the ~12 most
+material items; the harness was counting deliberate selection as error. Splitting
+precision from coverage moved it to 1.0 with no change to the agent at all. An
+eval that measures the wrong thing does not merely fail to help — it manufactures
+false alarms that erode trust in the suite itself.
+
+The suite is checked against a deliberately broken build: reverting the
+provenance guard to its old behaviour must turn it red. A guard suite that cannot
+fail proves nothing.
+
 ---
 
 ## 10. Trust boundaries and safety

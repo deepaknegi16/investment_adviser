@@ -12,7 +12,7 @@ from .. import gold_factors, gold_scenarios, notify
 from ..agents.gold_alerts import run_and_alert
 from ..agents.gold_watch import FACTORS
 from ..agents.runner import AgentUnavailable
-from ..db import GoldEvent, GoldWatchRun, get_db
+from ..db import GoldEvalRun, GoldEvent, GoldWatchRun, GuardrailViolation, get_db
 
 router = APIRouter(prefix="/api/gold")
 
@@ -78,6 +78,7 @@ def events(limit: int = 50, factor: Optional[str] = None, db: Session = Depends(
                 "headline": r.headline, "source": r.source, "url": r.url,
                 "date": r.event_date, "direction": r.direction, "impact": r.impact,
                 "horizon": r.horizon, "why_it_matters": r.why_it_matters,
+                "trust": r.trust or "unknown",
                 "first_seen": r.first_seen.isoformat(timespec="seconds"),
                 "alerted": bool(r.alerted),
             }
@@ -95,11 +96,42 @@ def runs(limit: int = 30, db: Session = Depends(get_db)):
                 "id": r.id, "ts": r.ts.isoformat(timespec="seconds"), "bias": r.bias,
                 "conviction": r.conviction, "etf_price": r.etf_price,
                 "n_events": r.n_events, "n_new": r.n_new, "emailed": bool(r.emailed),
-                "email_error": r.email_error,
+                "email_error": r.email_error, "suppressed_reason": r.suppressed_reason,
+                "n_violations": r.n_violations or 0,
             }
             for r in rows
         ]
     }
+
+
+@router.get("/violations")
+def violations(limit: int = 100, kind: Optional[str] = None, db: Session = Depends(get_db)):
+    """Everything the guardrails caught. Flagged output is kept, so this is the
+    audit trail of what the agent got wrong and how often."""
+    q = db.query(GuardrailViolation)
+    if kind:
+        q = q.filter(GuardrailViolation.kind == kind)
+    rows = q.order_by(GuardrailViolation.id.desc()).limit(min(limit, 500)).all()
+    return {
+        "violations": [
+            {"id": r.id, "ts": r.ts.isoformat(timespec="seconds"), "run_id": r.run_id,
+             "kind": r.kind, "severity": r.severity, "detail": r.detail,
+             "event_id": r.event_id}
+            for r in rows
+        ]
+    }
+
+
+@router.get("/eval")
+def latest_eval(db: Session = Depends(get_db)):
+    """Most recent eval_gold.py run."""
+    row = db.query(GoldEvalRun).order_by(GoldEvalRun.id.desc()).first()
+    if not row:
+        raise HTTPException(404, "No gold eval yet — run backend/eval_gold.py.")
+    payload = json.loads(row.payload_json)
+    payload["ran_at"] = row.ts.isoformat(timespec="seconds")
+    payload["passed"] = bool(row.passed)
+    return payload
 
 
 @router.get("/alerts/config")
