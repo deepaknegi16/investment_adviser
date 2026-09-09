@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, getToken, setToken } from "./api.js";
 import PortfolioTable from "./components/PortfolioTable.jsx";
 import PicksTable from "./components/PicksTable.jsx";
+import SmallCapTable from "./components/SmallCapTable.jsx";
 import StockDrawer from "./components/StockDrawer.jsx";
 import AddShareDialog from "./components/AddShareDialog.jsx";
 import Login from "./components/Login.jsx";
@@ -106,6 +107,7 @@ export default function App() {
           })
         }
       />
+      <SmallCapTable onSelect={setSelected} />
 
       <p className="disclaimer">
         ⚠ Market data via Yahoo Finance (~15 min delayed). Recommendations and predictions are

@@ -130,16 +130,36 @@ def get_closes(symbols: List[str]) -> Dict[str, pd.Series]:
                 missing.append(sym)
 
     if missing:
-        fetched = _download_history(missing)
-        # A batch can come back short. Retry the stragglers one at a time rather
-        # than reporting "no data" for a symbol Yahoo will happily serve alone.
-        still_missing = [s for s in missing if s not in fetched]
-        for sym in still_missing:
+        # Chunk: a single yf.download with 140 tickers is unreliable and drops
+        # names silently. Chunks are also fetched in parallel, so a large screen
+        # is bounded by the slowest chunk rather than by the total.
+        # Chunks run SERIALLY. yf.download already parallelises internally, so
+        # firing four chunks at once stacks concurrency on concurrency and Yahoo
+        # answers with empties — measured: one 25-symbol chunk returns 25/25 in
+        # 1.8 s, while four in parallel silently lost 113 of 140 symbols and the
+        # screen reported them as ordinary rejections.
+        chunks = [missing[i:i + 25] for i in range(0, len(missing), 25)]
+        fetched: Dict[str, pd.Series] = {}
+        for chunk in chunks:
             try:
-                single = _download_history([sym])
-                fetched.update(single)
+                fetched.update(_download_history(chunk))
             except Exception:
                 pass
+
+        # Retry stragglers in PARALLEL and bounded. This loop used to be serial
+        # and unbounded, which turned a partially-failed 140-symbol batch into
+        # 140 sequential downloads and made the screen endpoint hang for minutes.
+        still_missing = [s for s in missing if s not in fetched][:30]
+        if still_missing:
+            def one(sym):
+                try:
+                    return _download_history([sym])
+                except Exception:
+                    return {}
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                for part in pool.map(one, still_missing):
+                    fetched.update(part)
+
         with _lock:
             for sym, series in fetched.items():
                 _history_cache[sym] = {"ts": now, "data": series}
@@ -398,6 +418,7 @@ def get_fundamentals(symbol: str) -> dict:
         "price_to_sales": fix_ratio(info.get("priceToSalesTrailing12Months"), "price_to_sales"),
         "ev_to_ebitda": fix_ratio(info.get("enterpriseToEbitda"), "ev_to_ebitda"),
         "roe": _pct(info.get("returnOnEquity")),
+        "roe_derived": False,
         "roa": _pct(info.get("returnOnAssets")),
         "profit_margin": _pct(info.get("profitMargins")),
         "operating_margin": _pct(info.get("operatingMargins")),
@@ -413,6 +434,19 @@ def get_fundamentals(symbol: str) -> dict:
         "eps": round(info["trailingEps"], 2) if info.get("trailingEps") else None,
         "book_value": round(info["bookValue"], 2) if info.get("bookValue") else None,
     }
+
+    # Yahoo publishes returnOnEquity for only ~7% of Indian small caps but gives
+    # EPS and book value per share for ~100% of them, and ROE is just the ratio
+    # of the two. Without this a small-cap quality screen rejects almost
+    # everything for missing data rather than for weak fundamentals — which is a
+    # far worse error than a slightly imprecise ROE, since the derived figure
+    # uses ending rather than average equity and lands within ~1.5 points of
+    # Yahoo's own where both exist.
+    if metrics["roe"] is None:
+        eps, bvps = info.get("trailingEps"), info.get("bookValue")
+        if eps is not None and bvps:
+            metrics["roe"] = round(100.0 * eps / bvps, 2)
+            metrics["roe_derived"] = True
 
     result = {
         "available": True,
@@ -484,7 +518,74 @@ def cached_sector(symbol: str) -> Optional[str]:
     return (entry.get("data") or {}).get("sector")
 
 
-def get_fundamentals_bulk(symbols: List[str]) -> Dict[str, dict]:
-    """Fundamentals for several symbols at once (24 h cache, so usually free)."""
-    with ThreadPoolExecutor(max_workers=6) as pool:
-        return dict(zip(symbols, pool.map(get_fundamentals, symbols)))
+def get_fundamentals_bulk(symbols: List[str], retry: bool = True) -> Dict[str, dict]:
+    """Fundamentals for several symbols at once (24 h cache, so usually free).
+
+    Yahoo starts returning empty `info` under load, and on a 140-symbol screen
+    that silently looks identical to "this company has no fundamentals". One
+    slower retry pass over the blanks converts most of them, and modest
+    concurrency avoids provoking the limit in the first place.
+    """
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        out = dict(zip(symbols, pool.map(get_fundamentals, symbols)))
+    if not retry:
+        return out
+    blanks = [s for s, f in out.items() if not (f or {}).get("available")]
+    if blanks:
+        time.sleep(1.5)
+        with _lock:
+            for s in blanks:
+                _fundamentals_cache.pop(s, None)  # force a real refetch
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            out.update(dict(zip(blanks, pool.map(get_fundamentals, blanks))))
+    return out
+
+
+_liquidity_cache: Dict[str, dict] = {}
+
+
+def get_liquidity(symbols: List[str]) -> Dict[str, Optional[float]]:
+    """Median daily traded value in Rs crore, over ~3 months.
+
+    The metric that matters most for a small cap and is missing from every other
+    view in this app. A company can screen perfectly on ROE and still be
+    untradeable: on a name doing Rs 2 crore a day, a retail order moves the price
+    against you and an exit during a fall may not clear at all. Screening small
+    caps without a liquidity floor is the single most expensive omission possible.
+    """
+    now = time.time()
+    out: Dict[str, Optional[float]] = {}
+    missing: List[str] = []
+    with _lock:
+        for sym in symbols:
+            entry = _liquidity_cache.get(sym)
+            if entry and now - entry["ts"] < CONSENSUS_TTL:
+                out[sym] = entry["data"]
+            else:
+                missing.append(sym)
+    if not missing:
+        return out
+    try:
+        data = yf.download(tickers=" ".join(missing), period="3mo", interval="1d",
+                           auto_adjust=False, progress=False, group_by="ticker",
+                           threads=True)
+    except Exception:
+        data = None
+    for sym in missing:
+        value = None
+        try:
+            if data is not None and isinstance(data.columns, pd.MultiIndex) and sym in data.columns.get_level_values(0):
+                df = data[sym]
+                turnover = (df["Close"] * df["Volume"]).dropna()
+                if not turnover.empty:
+                    value = round(float(turnover.median()) / 1e7, 2)  # Rs crore
+            elif data is not None and "Volume" in getattr(data, "columns", []):
+                turnover = (data["Close"] * data["Volume"]).dropna()
+                if not turnover.empty:
+                    value = round(float(turnover.median()) / 1e7, 2)
+        except Exception:
+            value = None
+        out[sym] = value
+        with _lock:
+            _liquidity_cache[sym] = {"ts": now, "data": value}
+    return out

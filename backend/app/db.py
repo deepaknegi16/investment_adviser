@@ -115,6 +115,20 @@ class GoldWatchRun(Base):
     payload_json = Column(Text, nullable=False)
 
 
+class SmallCapScreen(Base):
+    """Cached small/mid-cap screen — one row per day.
+
+    A cold run touches 140 symbols for prices, fundamentals, liquidity and
+    consensus and takes ~50 s, so it is cached like the daily picks rather than
+    recomputed per request.
+    """
+
+    __tablename__ = "smallcap_screen"
+    date = Column(String, primary_key=True)  # YYYY-MM-DD
+    payload_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
 class GuardrailViolation(Base):
     """Every guardrail hit, kept rather than discarded.
 

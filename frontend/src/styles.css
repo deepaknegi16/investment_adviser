@@ -383,3 +383,22 @@ button.danger { background: transparent; color: var(--red); border: 1px solid va
   display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px;
   font-size: 11.5px; color: var(--muted); font-family: ui-monospace, monospace;
 }
+
+/* ------------------------------------------ small & mid cap screen */
+.sc-summary { font-size: 13px; margin-bottom: 10px; display: flex; flex-wrap: wrap;
+  gap: 8px; align-items: center; }
+.sc-gates-toggle { padding: 2px 8px; font-size: 11.5px; }
+.sc-gates {
+  border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px;
+  margin-bottom: 12px; font-size: 12.5px; line-height: 1.7;
+  background: var(--panel-2, rgba(255,255,255,0.02));
+}
+.sc-gates > div { padding: 2px 0; }
+.sc-sector { font-size: 11px; margin-top: 1px; }
+.sc-near { margin-top: 12px; font-size: 12.5px; }
+.sc-near ul { margin: 5px 0 0; padding-left: 20px; line-height: 1.7; }
+.sc-risk {
+  margin-top: 12px; padding: 10px 12px; border-radius: 6px; font-size: 12.5px;
+  line-height: 1.55; color: var(--orange);
+  background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25);
+}

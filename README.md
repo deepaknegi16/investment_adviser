@@ -142,6 +142,24 @@ not own. That is what the screener table is for.
 **A share of that basket, not of your net worth.** The model knows nothing about
 your income, horizon, taxes or other assets. Hover any cell for the arithmetic.
 
+## Small & mid caps with a solid base
+
+A third table under the Top-20, screening a 140-name small/mid universe
+(₹1,000–60,000 cr) that the Nifty-100 screener never sees.
+
+**Base first, promise second** — a name clears hard gates before its promise is
+scored at all: median daily turnover ≥ ₹3 cr, positive earnings, ROE ≥ 12%,
+debt/equity ≤ 100%, revenue not shrinking, above its 200-day average but under
+40% above it with RSI ≤ 75. Survivors are ranked by the same conviction model as
+everything else. Names that failed exactly one gate are listed too — often the
+more interesting list.
+
+The liquidity gate is the one that matters most and that no other view applies:
+at ₹2 cr of daily turnover your own order moves the price, and in a correction
+there may be no bid at all.
+
+`GET /api/smallcaps` · cached daily (a cold run touches 140 symbols, ~60 s)
+
 ## Fundamentals
 
 Open any share and the drawer now shows **20 fundamental metrics** — P/E (trailing

@@ -49,6 +49,7 @@ export const api = {
   analysis: (symbol, refresh = false) =>
     request(`/api/stocks/${symbol}/analysis${refresh ? "?refresh=true" : ""}`),
   picks: (refresh = false) => request(`/api/picks${refresh ? "?refresh=true" : ""}`),
+  smallcaps: (refresh = false) => request(`/api/smallcaps${refresh ? "?refresh=true" : ""}`),
   chat: (message, history) =>
     request("/api/chat", { method: "POST", body: JSON.stringify({ message, history }) }),
   metrics: () => request("/api/metrics"),

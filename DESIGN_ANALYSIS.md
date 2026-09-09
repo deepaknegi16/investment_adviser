@@ -503,3 +503,35 @@ artefact: the screener pre-selects on momentum and trend, which are 40% of the
 conviction weighting, so candidates are expected to win on the axes that chose
 them. The caveat is the first warning in the response — the alternative, silently
 handicapping candidates, would hide a real signal behind an unstated fudge.
+
+## 23. Screening small caps
+
+### Gate first, or rank first?
+
+| Option | Pros | Cons |
+|---|---|---|
+| **Hard gates, then rank the survivors** ✅ | The exciting-but-unsound name never reaches the list; each rejection has one stated reason | A good business one point under a threshold is excluded — mitigated by surfacing near-misses |
+| Rank everything, show the top N | Nothing is lost | This is how screens surface loss-making, leveraged, untradeable small caps with great momentum |
+| Score gates as weights | Nuanced | A high momentum score can outvote "cannot be sold", which is not a trade-off worth offering |
+
+### Liquidity is the gate that had to exist
+
+No other view in this app measures tradability, and for a large cap it barely
+matters. For a small cap it is the difference between a position and a trap: at
+₹2 cr of median daily turnover a retail order moves the price against you, and
+during a correction there may be no bid. It is deliberately the first gate.
+
+### Where the universe came from
+
+There was none — `nifty100.json` is entirely large caps. A 169-ticker candidate
+list was written and then **validated against live data before being saved**;
+six symbols failed and were dropped, which is exactly why the validation step
+existed rather than trusting a hand-written list.
+
+### Deriving ROE rather than rejecting on its absence
+
+Yahoo publishes `returnOnEquity` for ~7% of Indian small caps and EPS plus book
+value for ~100%, and ROE is the ratio of the two. Without the fallback a quality
+screen rejects almost everything for missing data, which is a far worse error
+than a derived figure sitting ~2 points from the vendor's (ending vs average
+equity). Derived values are flagged, not passed off as reported.

@@ -1,0 +1,702 @@
+[
+ {
+  "symbol": "ASTRAL.NS",
+  "name": "Astral Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "ATUL.NS",
+  "name": "Atul Ltd",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "BEML.NS",
+  "name": "BEML Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "BALAMINES.NS",
+  "name": "Balaji Amines Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "BALRAMCHIN.NS",
+  "name": "Balrampur Chini Mills Limited",
+  "sector": "Consumer Defensive"
+ },
+ {
+  "symbol": "BATAINDIA.NS",
+  "name": "Bata India Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "BSOFT.NS",
+  "name": "Birlasoft Limited",
+  "sector": "Technology"
+ },
+ {
+  "symbol": "BLUESTARCO.NS",
+  "name": "Blue Star Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "CESC.NS",
+  "name": "CESC Limited",
+  "sector": "Utilities"
+ },
+ {
+  "symbol": "CANFINHOME.NS",
+  "name": "Can Fin Homes Limited",
+  "sector": "Financial Services"
+ },
+ {
+  "symbol": "CAPLIPOINT.NS",
+  "name": "Caplin Point Laboratories Limited",
+  "sector": "Healthcare"
+ },
+ {
+  "symbol": "CARBORUNIV.NS",
+  "name": "Carborundum Universal Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "CENTRALBK.NS",
+  "name": "Central Bank of India",
+  "sector": "Financial Services"
+ },
+ {
+  "symbol": "CDSL.NS",
+  "name": "Central Depository Services (India) Limited",
+  "sector": "Financial Services"
+ },
+ {
+  "symbol": "CENTURYPLY.NS",
+  "name": "Century Plyboards (India) Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "CERA.NS",
+  "name": "Cera Sanitaryware Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "CHAMBLFERT.NS",
+  "name": "Chambal Fertilisers and Chemicals Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "CUB.NS",
+  "name": "City Union Bank Limited",
+  "sector": "Financial Services"
+ },
+ {
+  "symbol": "CAMS.NS",
+  "name": "Computer Age Management Services Limited",
+  "sector": "Technology"
+ },
+ {
+  "symbol": "CONCOR.NS",
+  "name": "Container Corporation of India Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "CREDITACC.NS",
+  "name": "CreditAccess Grameen Limited",
+  "sector": "Financial Services"
+ },
+ {
+  "symbol": "CROMPTON.NS",
+  "name": "Crompton Greaves Consumer Electricals Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "CYIENT.NS",
+  "name": "Cyient Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "DEEPAKNTR.NS",
+  "name": "Deepak Nitrite Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "DELTACORP.NS",
+  "name": "Delta Corp Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "DEVYANI.NS",
+  "name": "Devyani International Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "DHANUKA.NS",
+  "name": "Dhanuka Agritech Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "EIDPARRY.NS",
+  "name": "E.I.D.- Parry (India) Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "ELGIEQUIP.NS",
+  "name": "Elgi Equipments Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "ENGINERSIN.NS",
+  "name": "Engineers India Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "EQUITASBNK.NS",
+  "name": "Equitas Small Finance Bank Limited",
+  "sector": "Financial Services"
+ },
+ {
+  "symbol": "ESCORTS.NS",
+  "name": "Escorts Kubota Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "EXIDEIND.NS",
+  "name": "Exide Industries Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "FINEORG.NS",
+  "name": "Fine Organic Industries Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "FINCABLES.NS",
+  "name": "Finolex Cables Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "FINPIPE.NS",
+  "name": "Finolex Industries Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "GALAXYSURF.NS",
+  "name": "Galaxy Surfactants Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "GARFIBRES.NS",
+  "name": "Garware Technical Fibres Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "GODFRYPHLP.NS",
+  "name": "Godfrey Phillips India Limited",
+  "sector": "Consumer Defensive"
+ },
+ {
+  "symbol": "GRANULES.NS",
+  "name": "Granules India Limited",
+  "sector": "Healthcare"
+ },
+ {
+  "symbol": "GRAPHITE.NS",
+  "name": "Graphite India Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "GRINDWELL.NS",
+  "name": "Grindwell Norton Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "GNFC.NS",
+  "name": "Gujarat Narmada Valley Fertilizers & Chemicals Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "GSFC.NS",
+  "name": "Gujarat State Fertilizers & Chemicals Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "HEG.NS",
+  "name": "HEG Advanced Materials Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "HATSUN.NS",
+  "name": "Hatsun Agro Product Limited",
+  "sector": "Consumer Defensive"
+ },
+ {
+  "symbol": "HINDCOPPER.NS",
+  "name": "Hindustan Copper Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "IIFL.NS",
+  "name": "IIFL Finance Limited",
+  "sector": "Financial Services"
+ },
+ {
+  "symbol": "IEX.NS",
+  "name": "Indian Energy Exchange Limited",
+  "sector": "Financial Services"
+ },
+ {
+  "symbol": "IRCTC.NS",
+  "name": "Indian Railway Catering & Tourism Corporation Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "IPCALAB.NS",
+  "name": "Ipca Laboratories Limited",
+  "sector": "Healthcare"
+ },
+ {
+  "symbol": "JBCHEPHARM.NS",
+  "name": "J. B. Chemicals & Pharmaceuticals Limited",
+  "sector": ""
+ },
+ {
+  "symbol": "JKCEMENT.NS",
+  "name": "J.K. Cement Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "JKLAKSHMI.NS",
+  "name": "JK Lakshmi Cement Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "JKPAPER.NS",
+  "name": "JK Paper Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "JUBLFOOD.NS",
+  "name": "Jubilant FoodWorks Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "JUBLINGREA.NS",
+  "name": "Jubilant Ingrevia Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "JYOTHYLAB.NS",
+  "name": "Jyothy Labs Limited",
+  "sector": "Consumer Defensive"
+ },
+ {
+  "symbol": "KEC.NS",
+  "name": "KEC International Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "KEI.NS",
+  "name": "KEI Industries Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "KPITTECH.NS",
+  "name": "KPIT Technologies Limited",
+  "sector": "Technology"
+ },
+ {
+  "symbol": "KRBL.NS",
+  "name": "KRBL Limited",
+  "sector": "Consumer Defensive"
+ },
+ {
+  "symbol": "KAJARIACER.NS",
+  "name": "Kajaria Ceramics Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "KANSAINER.NS",
+  "name": "Kansai Nerolac Paints Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "KIRLOSENG.NS",
+  "name": "Kirloskar Oil Engines Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "LAOPALA.NS",
+  "name": "La Opala RG Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "LXCHEM.NS",
+  "name": "Laxmi Organic Industries Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "MGL.NS",
+  "name": "Mahanagar Gas Limited",
+  "sector": "Utilities"
+ },
+ {
+  "symbol": "MAHSEAMLES.NS",
+  "name": "Maharashtra Seamless Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "MANAPPURAM.NS",
+  "name": "Manappuram Finance Limited",
+  "sector": "Financial Services"
+ },
+ {
+  "symbol": "MASTEK.NS",
+  "name": "Mastek Limited",
+  "sector": "Technology"
+ },
+ {
+  "symbol": "MFSL.NS",
+  "name": "Max Financial Services Limited",
+  "sector": "Financial Services"
+ },
+ {
+  "symbol": "METROPOLIS.NS",
+  "name": "Metropolis Healthcare Limited",
+  "sector": "Healthcare"
+ },
+ {
+  "symbol": "MINDACORP.NS",
+  "name": "Minda Corporation Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "MPHASIS.NS",
+  "name": "Mphasis Limited",
+  "sector": "Technology"
+ },
+ {
+  "symbol": "NATCOPHARM.NS",
+  "name": "NATCO Pharma Limited",
+  "sector": "Healthcare"
+ },
+ {
+  "symbol": "NBCC.NS",
+  "name": "NBCC (India) Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "NCC.NS",
+  "name": "NCC Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "NLCINDIA.NS",
+  "name": "NLC India Limited",
+  "sector": "Utilities"
+ },
+ {
+  "symbol": "NOCIL.NS",
+  "name": "NOCIL Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "NH.NS",
+  "name": "Narayana Hrudayalaya Limited",
+  "sector": "Healthcare"
+ },
+ {
+  "symbol": "NAVINFLUOR.NS",
+  "name": "Navin Fluorine International Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "NESCO.NS",
+  "name": "Nesco Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "NILKAMAL.NS",
+  "name": "Nilkamal Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "ORIENTELEC.NS",
+  "name": "Orient Electric Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "PAGEIND.NS",
+  "name": "Page Industries Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "PFIZER.NS",
+  "name": "Pfizer Limited",
+  "sector": "Healthcare"
+ },
+ {
+  "symbol": "POLYMED.NS",
+  "name": "Poly Medicure Limited",
+  "sector": "Healthcare"
+ },
+ {
+  "symbol": "PRAJIND.NS",
+  "name": "Praj Industries Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "PRINCEPIPE.NS",
+  "name": "Prince Pipes and Fittings Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "PRSMJOHNSN.NS",
+  "name": "Prism Johnson Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "QUESS.NS",
+  "name": "Quess Corp Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "RHIM.NS",
+  "name": "RHI Magnesita India Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "RADICO.NS",
+  "name": "Radico Khaitan Limited",
+  "sector": "Consumer Defensive"
+ },
+ {
+  "symbol": "RVNL.NS",
+  "name": "Rail Vikas Nigam Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "RAILTEL.NS",
+  "name": "RailTel Corporation of India Limited",
+  "sector": "Communication Services"
+ },
+ {
+  "symbol": "RAJESHEXPO.NS",
+  "name": "Rajesh Exports Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "RALLIS.NS",
+  "name": "Rallis India Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "RCF.NS",
+  "name": "Rashtriya Chemicals and Fertilizers Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "RATNAMANI.NS",
+  "name": "Ratnamani Metals & Tubes Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "RAYMOND.NS",
+  "name": "Raymond Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "REDINGTON.NS",
+  "name": "Redington Limited",
+  "sector": "Technology"
+ },
+ {
+  "symbol": "RELAXO.NS",
+  "name": "Relaxo Footwears Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "ROUTE.NS",
+  "name": "Route Mobile Limited",
+  "sector": "Communication Services"
+ },
+ {
+  "symbol": "SJVN.NS",
+  "name": "SJVN Limited",
+  "sector": "Utilities"
+ },
+ {
+  "symbol": "SANOFI.NS",
+  "name": "Sanofi India Limited",
+  "sector": "Healthcare"
+ },
+ {
+  "symbol": "SHARDACROP.NS",
+  "name": "Sharda Cropchem Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "SFL.NS",
+  "name": "Sheela Foam Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "SHOPERSTOP.NS",
+  "name": "Shoppers Stop Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "SOBHA.NS",
+  "name": "Sobha Limited",
+  "sector": "Real Estate"
+ },
+ {
+  "symbol": "SONATSOFTW.NS",
+  "name": "Sonata Software Limited",
+  "sector": "Technology"
+ },
+ {
+  "symbol": "SUDARSCHEM.NS",
+  "name": "Sudarshan Chemical Industries Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "SUMICHEM.NS",
+  "name": "Sumitomo Chemical India Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "SUNTV.NS",
+  "name": "Sun TV Network Limited",
+  "sector": "Communication Services"
+ },
+ {
+  "symbol": "SUNDRMFAST.NS",
+  "name": "Sundram Fasteners Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "SUPRAJIT.NS",
+  "name": "Suprajit Engineering Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "SYMPHONY.NS",
+  "name": "Symphony Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "TCIEXP.NS",
+  "name": "TCI Express Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "TTKPRESTIG.NS",
+  "name": "TTK Prestige Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "TANLA.NS",
+  "name": "Tanla Platforms Limited",
+  "sector": "Technology"
+ },
+ {
+  "symbol": "TATACHEM.NS",
+  "name": "Tata Chemicals Limited",
+  "sector": "Basic Materials"
+ },
+ {
+  "symbol": "TATAELXSI.NS",
+  "name": "Tata Elxsi Limited",
+  "sector": "Technology"
+ },
+ {
+  "symbol": "TATAINVEST.NS",
+  "name": "Tata Investment Corporation Limited",
+  "sector": "Financial Services"
+ },
+ {
+  "symbol": "TEAMLEASE.NS",
+  "name": "TeamLease Services Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "NIACL.NS",
+  "name": "The New India Assurance Company Limited",
+  "sector": "Financial Services"
+ },
+ {
+  "symbol": "SUPREMEIND.NS",
+  "name": "The Supreme Industries Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "THERMAX.NS",
+  "name": "Thermax Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "TIMKEN.NS",
+  "name": "Timken India Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "TRIDENT.NS",
+  "name": "Trident Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "TRIVENI.NS",
+  "name": "Triveni Engineering & Industries Limited",
+  "sector": "Consumer Defensive"
+ },
+ {
+  "symbol": "TIINDIA.NS",
+  "name": "Tube Investments of India Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "UJJIVANSFB.NS",
+  "name": "Ujjivan Small Finance Bank Limited",
+  "sector": "Financial Services"
+ },
+ {
+  "symbol": "UBL.NS",
+  "name": "United Breweries Limited",
+  "sector": "Consumer Defensive"
+ },
+ {
+  "symbol": "VGUARD.NS",
+  "name": "V-Guard Industries Limited",
+  "sector": "Industrials"
+ },
+ {
+  "symbol": "VIPIND.NS",
+  "name": "V.I.P. Industries Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "VSTIND.NS",
+  "name": "VST Industries Limited",
+  "sector": "Consumer Defensive"
+ },
+ {
+  "symbol": "VOLTAS.NS",
+  "name": "Voltas Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "WELSPUNLIV.NS",
+  "name": "Welspun Living Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "WHIRLPOOL.NS",
+  "name": "Whirlpool of India Limited",
+  "sector": "Consumer Cyclical"
+ },
+ {
+  "symbol": "ZENSARTECH.NS",
+  "name": "Zensar Technologies Limited",
+  "sector": "Technology"
+ }
+]

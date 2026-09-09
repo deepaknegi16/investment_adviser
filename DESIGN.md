@@ -369,6 +369,55 @@ new names come from.
 The weights are a share of *that basket*, not of net worth. The model knows
 nothing about income, horizon, taxes or other assets.
 
+## 5b. The small & mid cap screen
+
+The Top-20 screener runs over the Nifty 100, where the smallest name is still
+about Rs 3 lakh crore. `smallcap.py` covers the other end — Rs 1,000 to 60,000
+crore — from a curated 140-name universe (`smallmid.json`, every ticker validated
+against live data before being written, which eliminated six symbols outright).
+
+**Base first, promise second.** A name must clear hard gates before its promise
+is scored at all; ranking first and filtering later is how screens surface the
+exciting small cap that turns out to be loss-making, leveraged and untradeable.
+
+| Gate | Threshold | Why |
+|---|---|---|
+| Liquidity | median daily turnover ≥ ₹3 cr | The gate that matters most and that no other view applies. On a name doing ₹2 cr a day your own order moves the price, and in a falling market you may not get out |
+| Profitable | trailing P/E > 0, EPS > 0 | A small cap without earnings is a story |
+| Return on equity | ≥ 12% | "Solid base" in the sense that matters |
+| Leverage | debt/equity ≤ 100%, waived for lenders | Small caps fail through the balance sheet more often than the income statement |
+| Revenue | not shrinking | Cheap and shrinking is a trap, not a base |
+| Trend | above the 200-day average… | A base is something price built ON |
+| …but not vertical | < 40% above SMA200, RSI ≤ 75 | After a parabolic move you are buying everyone else's momentum |
+
+Survivors are ranked by the same `conviction.py` model as everything else, so a
+small cap and a large cap are judged on identical criteria. Near-misses (failed
+exactly one gate) are surfaced too — often the more interesting list.
+
+### Three data problems this screen exposed
+
+**Yahoo publishes `returnOnEquity` for only ~7% of Indian small caps**, against
+100% for EPS and book value. The original gate rejected on *missing data* rather
+than weak fundamentals. ROE is now derived as EPS ÷ book value per share where
+Yahoo omits it, flagged `roe_derived` — validated against names where Yahoo does
+publish it and landing within ~2 points (the gap is ending vs average equity).
+Coverage went from 3/40 to 40/40.
+
+**Data gaps were being reported as rejections.** A symbol with no price history
+or no fundamentals was silently skipped while still counting toward "assessed".
+The response now separates `n_assessed` from `n_unassessable` and says so.
+
+**Parallel chunked downloads silently lost 113 of 140 symbols.** `yf.download`
+already parallelises internally, so firing four 25-symbol chunks concurrently
+stacked concurrency on concurrency and Yahoo answered with empties — which
+looked exactly like ordinary rejections. Measured: one 25-symbol chunk returns
+25/25 in 1.8 s. Chunks now run serially, and an earlier *serial, unbounded*
+retry loop that turned a partly-failed batch into 140 sequential downloads (and
+hung the endpoint past ten minutes) is now parallel and capped at 30.
+
+A cold run takes ~60 s across 140 symbols, so it is cached per day in
+`smallcap_screen` like the daily picks.
+
 ## 6. Auth, chat (RAG), and voice
 
 **Authentication (JWT).** `POST /api/auth/login` checks credentials from
@@ -597,6 +646,7 @@ spread between the scenarios, which is the honest headline.
 | `ai_holders` | `symbol` | Major-shareholder lookups (30-day TTL) |
 | `chat_log` | `id` | One row per chat turn — provider, retrieval mode, top score, latency |
 | `eval_runs` | `id` | Stored `eval_rag.py` results, surfaced by `/api/metrics` |
+| `smallcap_screen` | `date` | Daily small/mid-cap screen result — a cold run touches 140 symbols and takes ~60 s |
 | `gold_events` | `id` = SHA-1(factor+headline+source) | Every gold factor event seen, with direction/impact/horizon and whether it was emailed. The hash key **is** the dedupe mechanism |
 | `gold_watch_runs` | `id` | Audit trail per sweep: bias, ETF price, events found/new, emailed, email error, suppression reason, violation count, full payload |
 | `guardrail_violations` | `id` | Every guardrail hit, with severity and the run that produced it. Flag-don't-drop only means something if the flags are kept |
@@ -623,6 +673,7 @@ than by a query — dedupe cannot be forgotten at a call site.
 | `GET /api/stocks/{symbol}/fundamentals` | 20 fundamental metrics, each explained, grouped into pillars, with matched playbooks |
 | `GET /api/stocks/fundamentals/guide` | The metric catalogue and combination playbooks as a standalone reference |
 | `GET /api/picks[?refresh=true]` | Cached / fresh top-20 |
+| `GET /api/smallcaps[?refresh=true]` | Small/mid caps clearing the base gates, ranked; plus near-misses and the gate list |
 | `POST /api/auth/login` | Credentials → JWT (the only public endpoint besides health) |
 | `GET /api/documents` · `POST /api/documents` · `DELETE /api/documents/{name}` | List, upload and remove RAG source files |
 | `POST /api/chat` | RAG-grounded chat: `{message, history}` → `{reply, sources, provider, retrieval_mode}`; every turn logged to `chat_log` |
