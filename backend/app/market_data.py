@@ -20,7 +20,7 @@ CONSENSUS_TTL = 86400
 FUNDAMENTALS_TTL = 86400
 
 _lock = threading.Lock()
-_history_cache: Dict[str, dict] = {}  # key: sorted symbols tuple -> {ts, data}
+_history_cache: Dict[str, dict] = {}  # symbol -> {ts, data}
 _consensus_cache: Dict[str, dict] = {}  # symbol -> {ts, data}
 _fundamentals_cache: Dict[str, dict] = {}  # symbol -> {ts, data}
 
@@ -106,15 +106,45 @@ def _download_history(symbols: List[str]) -> Dict[str, pd.Series]:
 
 
 def get_closes(symbols: List[str]) -> Dict[str, pd.Series]:
-    key = "|".join(sorted(symbols))
+    """5y closes per symbol, cached PER SYMBOL rather than per request.
+
+    This used to key the cache on the whole sorted symbol list, so asking for 13
+    symbols and then 32 overlapping ones issued two full downloads and cached
+    them separately. Once /api/allocation started requesting the union of the
+    watchlist and the screener picks, that doubled the load on Yahoo and it began
+    dropping symbols from batches — INFY and ITC rendered as "no data available"
+    while a direct fetch for them worked fine.
+
+    Caching per symbol means the union request reuses whatever the watchlist
+    already fetched, and only genuinely missing symbols go over the wire.
+    """
+    now = time.time()
+    out: Dict[str, pd.Series] = {}
+    missing: List[str] = []
     with _lock:
-        entry = _history_cache.get(key)
-        if entry and time.time() - entry["ts"] < PRICE_TTL:
-            return entry["data"]
-    data = _download_history(symbols)
-    with _lock:
-        _history_cache[key] = {"ts": time.time(), "data": data}
-    return data
+        for sym in symbols:
+            entry = _history_cache.get(sym)
+            if entry and now - entry["ts"] < PRICE_TTL:
+                out[sym] = entry["data"]
+            else:
+                missing.append(sym)
+
+    if missing:
+        fetched = _download_history(missing)
+        # A batch can come back short. Retry the stragglers one at a time rather
+        # than reporting "no data" for a symbol Yahoo will happily serve alone.
+        still_missing = [s for s in missing if s not in fetched]
+        for sym in still_missing:
+            try:
+                single = _download_history([sym])
+                fetched.update(single)
+            except Exception:
+                pass
+        with _lock:
+            for sym, series in fetched.items():
+                _history_cache[sym] = {"ts": now, "data": series}
+        out.update(fetched)
+    return out
 
 
 def get_consensus(symbol: str) -> dict:

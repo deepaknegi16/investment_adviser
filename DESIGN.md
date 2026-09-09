@@ -309,6 +309,32 @@ neutral in proportion to how much of the weighting scheme actually resolved
 would let two signals stand in for five and score as confidently as a name with
 full coverage.
 
+### One allocation, not two
+
+The first version sized the watchlist and the screener picks as **separate
+baskets**. Each summed to 100%, so the two tables together implied 190% of a
+portfolio, and HAL — which appeared in both — was shown at **15% in one and 5% in
+the other**. Two answers for one holding is not a rounding error; it is two
+models.
+
+There is one pot of money, so there is now one allocation. `routers/portfolio.py`
+exposes `GET /api/allocation` over the **union** of held names and screener
+candidates; both tables read those same weights, so a symbol in both lists shows
+one number and the two columns plus cash sum to 100%.
+
+This is also what makes the "never favour a name for already being held" property
+real rather than nominal: holdings and candidates compete in the same
+cross-section, and a poorly-scoring holding loses weight to a better-scoring
+candidate.
+
+**The comparison is disclosed as non-neutral.** Candidates currently take ~88% to
+holdings' ~10%, which reads as "sell almost everything you own" — and would be
+misleading. The candidates were selected from ~110 names by a momentum and trend
+pre-screen, and momentum plus trend are 40% of the conviction weighting, so they
+are expected to score well on exactly the axes that chose them. The response
+carries that caveat as its first warning, framing the picks as a shortlist to
+research rather than a rotation instruction.
+
 ### Sizing, caps and honesty about what it is
 
 Weight is conviction above a 0.45 funding threshold, divided by volatility (equal
@@ -587,7 +613,8 @@ than by a query — dedupe cannot be forgotten at a call site.
 | Endpoint | Behavior |
 |---|---|
 | `GET /api/health` | Liveness check — public, no auth |
-| `GET /api/watchlist` | Full table (prices, returns, status, advice, suggested weight) + basket `allocation` block |
+| `GET /api/watchlist` | Full table (prices, returns, status, advice, sector) |
+| `GET /api/allocation` | **One** set of suggested weights over the union of holdings and screener candidates — the single source both tables read |
 | `GET /api/stocks/{symbol}/summary` | Metrics + explainable advice for any NSE symbol, in or out of the watchlist |
 | `POST /api/watchlist` / `DELETE /api/watchlist/{symbol}` | Add / remove a share |
 | `GET /api/search?q=` | NSE symbol lookup for the add dialog |
@@ -619,7 +646,12 @@ than by a query — dedupe cannot be forgotten at a call site.
   cheaper model for the bulk task, low reasoning effort where quality allows,
   thinned tool payloads (≤ ~60 chart points), and a hard turn limit.
 - **Yahoo fragility is contained:** every Yahoo call lives in `market_data.py`
-  behind caches; if yfinance breaks, only that module changes.
+  behind caches; if yfinance breaks, only that module changes. Price history is
+  cached **per symbol**, not per request — keying on the whole symbol list meant
+  a 13-symbol watchlist call and a 32-symbol allocation call issued two separate
+  downloads, which doubled the load enough that Yahoo began dropping names from
+  batches and two holdings rendered as "no data available". Symbols missing from
+  a batch are also retried individually before being reported as unavailable.
 - **Model output is not trusted by default.** Every field the Gold Watch emits is
   checked before use (§7) — enums because the Groq fallback does not enforce
   schemas, provenance because a plausible URL is not a real one, and prose

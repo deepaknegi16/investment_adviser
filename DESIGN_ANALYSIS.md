@@ -481,3 +481,25 @@ fundamentals have been fetched, so on a cold cache the column funded 2 names and
 on a warm one 8 — visibly changing as you browsed. Fetching inline would put ~13
 Yahoo `info` calls on a 60-second poll. A daemon thread warms the cache once per
 symbol, so the first load costs nothing and every later load is a 24 h cache hit.
+
+## 22. One allocation or two?
+
+| Option | Pros | Cons |
+|---|---|---|
+| **One allocation over the union** ✅ | The columns actually sum to 100%; a symbol in both lists gets one number; holdings and candidates compete directly, which is what makes "no incumbency bonus" real | Needs a shared endpoint both tables read, and the comparison needs a selection-effect caveat |
+| Two independent baskets (the original) | Each table is self-contained | Two tables each summing to 100% implies 190% of a portfolio, and HAL showed 15% in one and 5% in the other. Indefensible once noticed |
+| Holdings only, picks unsized | Simple, no double-count | Removes the sizing from the table where a new idea most needs it |
+
+The bug was reported as "the percentages don't add to 100". They did — each
+basket summed to 100 individually. The defect was that there were two baskets at
+all, which is a design error rather than an arithmetic one, and the same stock
+carrying two different weights is the proof.
+
+### Disclosing the selection effect
+
+With one cross-section the candidates take ~88% and the holdings ~10%. Shipping
+that without comment would read as "sell almost everything you own". It is an
+artefact: the screener pre-selects on momentum and trend, which are 40% of the
+conviction weighting, so candidates are expected to win on the axes that chose
+them. The caveat is the first warning in the response — the alternative, silently
+handicapping candidates, would hide a real signal behind an unstated fudge.

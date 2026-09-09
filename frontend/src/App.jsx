@@ -28,7 +28,8 @@ export default function App() {
     try {
       const data = await api.watchlist();
       setShares(data.shares);
-      setAllocation(data.allocation || null);
+      api.allocation().then(setAllocation).catch(() => setAllocation(null));
+
       setUpdatedAt(new Date());
       setError(null);
     } catch (e) {
@@ -96,7 +97,7 @@ export default function App() {
         </div>
       </div>
 
-      <PicksTable
+      <PicksTable allocation={allocation}
         onSelect={(p) =>
           setSelected({
             symbol: p.symbol,

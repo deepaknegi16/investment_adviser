@@ -4,7 +4,7 @@ import AllocCell from "./AllocCell.jsx";
 import AllocationNote from "./AllocationNote.jsx";
 import { AdviceBadge, Pct } from "./PortfolioTable.jsx";
 
-export default function PicksTable({ onSelect }) {
+export default function PicksTable({ onSelect, allocation }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -67,7 +67,11 @@ export default function PicksTable({ onSelect }) {
                     <td><Pct value={p.ret_1m} /></td>
                     <td><Pct value={p.ret_1y} /></td>
                     <td><AdviceBadge advice={p.recommendation} /></td>
-                    <AllocCell pct={p.suggested_pct} why={p.suggested_why} signal={p.suggested_signal} />
+                    <AllocCell
+                      pct={allocation?.per_symbol?.[p.symbol]?.suggested_pct}
+                      why={allocation?.per_symbol?.[p.symbol]?.reason}
+                      signal={allocation?.per_symbol?.[p.symbol]?.signal}
+                    />
                     <td style={{ textAlign: "left", whiteSpace: "normal", minWidth: 220 }}>
                       {p.rationale}
                     </td>
@@ -75,7 +79,7 @@ export default function PicksTable({ onSelect }) {
                 ))}
               </tbody>
             </table>
-              <AllocationNote allocation={data?.allocation} />
+              <AllocationNote allocation={allocation} scope="picks" />
             <div style={{ padding: "10px 14px" }} className="muted">
               {data.market_note} · Generated {data.generated_at}
               {data.cached ? " (cached from an earlier day — refresh for today's picks)" : ""}

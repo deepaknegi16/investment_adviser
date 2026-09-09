@@ -35,6 +35,7 @@ export const api = {
   login: (username, password) =>
     request("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   watchlist: () => request("/api/watchlist"),
+  allocation: () => request("/api/allocation"),
   addShare: (symbol, name) =>
     request("/api/watchlist", { method: "POST", body: JSON.stringify({ symbol, name }) }),
   removeShare: (symbol) => request(`/api/watchlist/${symbol}`, { method: "DELETE" }),

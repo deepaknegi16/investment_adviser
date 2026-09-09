@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import allocation, market_data, recommend
+from .. import market_data, recommend
 from ..db import WatchlistItem, get_db
 
 router = APIRouter(prefix="/api")
@@ -43,42 +43,15 @@ def get_watchlist(db: Session = Depends(get_db)):
             "sector": None,  # filled below, only for names that made the cut
         })
 
-    # Suggested position sizes across the basket. Sector comes from the cached
-    # fundamentals when we already have them — never a fresh network call here,
-    # because this endpoint is on the 60-second polling path.
-    alloc_items = []
+    # Sector for the table, and a background warm so /api/allocation has the
+    # fundamentals it needs. Sizing itself lives in ONE place — portfolio.py —
+    # because the watchlist and the screener are not two separate portfolios.
     for sh in shares:
-        if sh.get("error"):
-            continue
-        sector = market_data.cached_sector(sh["symbol"])
-        sh["sector"] = sector
-        f = market_data.cached_fundamentals(sh["symbol"])
-        alloc_items.append({
-            "symbol": sh["symbol"],
-            "price": sh.get("price"),
-            "sma200": sh.get("sma200"),
-            "ret_1y": sh.get("ret_1y"),
-            "ret_1m": sh.get("ret_1m"),
-            "ann_vol": sh.get("ann_vol"),
-            "consensus_mean": (sh.get("consensus") or {}).get("mean"),
-            "sector": sector,
-            "fundamentals": (f or {}).get("metrics"),
-        })
-    # Kick off any missing fundamentals for the next poll — never block on them.
-    market_data.warm_fundamentals([s["symbol"] for s in alloc_items])
+        if not sh.get("error"):
+            sh["sector"] = market_data.cached_sector(sh["symbol"])
+    market_data.warm_fundamentals([s["symbol"] for s in shares if not s.get("error")])
 
-    alloc = allocation.suggest(alloc_items)
-    for sh in shares:
-        info = alloc["per_symbol"].get(sh["symbol"], {})
-        sh["suggested_pct"] = info.get("suggested_pct", 0.0)
-        sh["suggested_why"] = info.get("reason")
-        sh["suggested_signal"] = info.get("signal")
-
-    return {"shares": shares, "allocation": {
-        "cash_pct": alloc["cash_pct"],
-        "warnings": alloc["warnings"],
-        "basis": alloc["basis"],
-    }}
+    return {"shares": shares}
 
 
 @router.post("/watchlist", status_code=201)

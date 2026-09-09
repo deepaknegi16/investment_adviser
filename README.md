@@ -102,8 +102,11 @@ The Vite dev server proxies `/api` to the backend on port 8000.
 
 ## Suggested position sizing
 
-Both tables carry a **Suggested** column: what share of that basket the model
-would put in each name.
+Both tables carry a **Suggested** column, and they read **one** allocation over
+the union of your holdings and the screener candidates — so the two columns plus
+cash sum to 100%, and a stock appearing in both lists shows a single number.
+(They used to be sized as separate baskets, which implied 190% of a portfolio and
+gave HAL 15% in one table and 5% in the other.)
 
 Conviction is scored on **continuous cross-sectional ranks**, weighted by how
 strong the published evidence for each factor actually is:
