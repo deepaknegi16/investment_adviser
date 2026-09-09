@@ -52,17 +52,27 @@ def get_watchlist(db: Session = Depends(get_db)):
             continue
         sector = market_data.cached_sector(sh["symbol"])
         sh["sector"] = sector
+        f = market_data.cached_fundamentals(sh["symbol"])
         alloc_items.append({
             "symbol": sh["symbol"],
-            "blended_score": (sh.get("advice_logic") or {}).get("blended_score"),
+            "price": sh.get("price"),
+            "sma200": sh.get("sma200"),
+            "ret_1y": sh.get("ret_1y"),
+            "ret_1m": sh.get("ret_1m"),
             "ann_vol": sh.get("ann_vol"),
+            "consensus_mean": (sh.get("consensus") or {}).get("mean"),
             "sector": sector,
+            "fundamentals": (f or {}).get("metrics"),
         })
+    # Kick off any missing fundamentals for the next poll — never block on them.
+    market_data.warm_fundamentals([s["symbol"] for s in alloc_items])
+
     alloc = allocation.suggest(alloc_items)
     for sh in shares:
         info = alloc["per_symbol"].get(sh["symbol"], {})
         sh["suggested_pct"] = info.get("suggested_pct", 0.0)
         sh["suggested_why"] = info.get("reason")
+        sh["suggested_signal"] = info.get("signal")
 
     return {"shares": shares, "allocation": {
         "cash_pct": alloc["cash_pct"],

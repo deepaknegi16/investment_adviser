@@ -401,6 +401,44 @@ def get_fundamentals(symbol: str) -> dict:
     return result
 
 
+_warming: set = set()
+
+
+def warm_fundamentals(symbols: List[str]) -> None:
+    """Populate the fundamentals cache in the background, once per symbol.
+
+    Without this the suggested-weight column changes as you browse: value and
+    quality carry half the conviction weighting, and they only exist for symbols
+    whose fundamentals have been fetched. Fetching them inline would put ~13
+    Yahoo `info` calls on a 60-second poll; fetching them in a background thread
+    costs the first load nothing and every later load is a 24 h cache hit.
+    """
+    todo = [s for s in symbols
+            if s not in _warming and cached_fundamentals(s) is None]
+    if not todo:
+        return
+    _warming.update(todo)
+
+    def run():
+        try:
+            for sym in todo:
+                try:
+                    get_fundamentals(sym)
+                except Exception:
+                    pass  # a warm-up must never surface an error
+        finally:
+            _warming.difference_update(todo)
+
+    threading.Thread(target=run, daemon=True, name="warm-fundamentals").start()
+
+
+def cached_fundamentals(symbol: str) -> Optional[dict]:
+    """Fundamentals from cache only — never triggers a fetch (60 s poll path)."""
+    with _lock:
+        entry = _fundamentals_cache.get(symbol)
+    return (entry or {}).get("data")
+
+
 def cached_sector(symbol: str) -> Optional[str]:
     """Sector from the fundamentals cache only — never triggers a fetch.
 
@@ -414,3 +452,9 @@ def cached_sector(symbol: str) -> Optional[str]:
     if not entry:
         return None
     return (entry.get("data") or {}).get("sector")
+
+
+def get_fundamentals_bulk(symbols: List[str]) -> Dict[str, dict]:
+    """Fundamentals for several symbols at once (24 h cache, so usually free)."""
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        return dict(zip(symbols, pool.map(get_fundamentals, symbols)))

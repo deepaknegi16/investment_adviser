@@ -379,3 +379,7 @@ button.danger { background: transparent; color: var(--red); border: 1px solid va
 .alloc-note-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
 .alloc-warn { margin-top: 6px; color: var(--orange); line-height: 1.5; }
 .alloc-fine { margin-top: 6px; color: var(--muted); line-height: 1.5; font-size: 11.5px; }
+.alloc-weights {
+  display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px;
+  font-size: 11.5px; color: var(--muted); font-family: ui-monospace, monospace;
+}

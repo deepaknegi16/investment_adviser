@@ -22,7 +22,8 @@ flowchart LR
         MD[market_data service - yfinance wrapper + caches]
         RE[recommend - rules engine + fundamental scorecard]
         FN[fundamentals - metric catalogue, bands, playbooks]
-        AL[allocation - risk-parity position sizing]
+        CV[conviction - research-weighted factor ranks]
+        AL[allocation - risk parity + caps]
         GF[gold_factors - k decomposition + attribution]
         GS[gold_scenarios - driver-path projection]
         AG1[Analyst Agent]
@@ -44,6 +45,7 @@ flowchart LR
     WR --> RE
     WR --> AL
     PR --> AL
+    AL --> CV
     AR --> FN
     RE --> FN
     AR --> AG1 --> RUN --> O
@@ -67,7 +69,7 @@ and nothing above ever waits on anything below:
 | **Deterministic market data** (`market_data.py` + `recommend.py`) | free | seconds | Main table: prices, returns, status color, base advice |
 | **Rules engine** (`recommend.py`) | free | instant | Status 🟢🟠🔴 + BUY MORE/HOLD/SELL from technicals + analyst consensus |
 | **Fundamentals** (`fundamentals.py` + `market_data.get_fundamentals`) | free | ~1 s, cached 24 h | 20 explained ratios, sector-aware bands, combination playbooks |
-| **Position sizing** (`allocation.py`) | free | instant | Suggested weight per name — risk parity × conviction, with concentration caps |
+| **Position sizing** (`conviction.py` + `allocation.py`) | free | instant | Research-weighted cross-sectional conviction × inverse volatility, with concentration caps |
 | **Agentic AI** (`agents/`) | free tier (Gemini, Groq fallback) | minutes | On-demand: per-stock news digest + prediction; daily top-20 screener |
 | **Factor maths** (`gold_factors.py`, `gold_scenarios.py`) | free | seconds | Gold ETF decomposition, return attribution, scenario projection — deterministic, no AI |
 | **News discovery** (`gold_news.py`) | free | ~2 s | RSS sweep across nine gold factor buckets; deliberately quota-free |
@@ -252,49 +254,94 @@ is ever wanted.
 
 ## 5. Suggested position sizing
 
-A BUY badge says *whether*, not *how much* — and position sizing is where the
-larger mistakes are made. `app/allocation.py` adds a **Suggested** column to both
-the portfolio table and the top-20 picks, using two standard ideas and three hard
-constraints.
+A BUY badge says *whether*, not *how much*. Both tables carry a **Suggested**
+column giving each name's share of that basket.
 
-**Inverse-volatility weighting (risk parity).** Equal rupees is not equal risk. A
-45%-vol small cap and a 20%-vol large cap held at the same weight contribute
-wildly different amounts of portfolio movement, and the volatile one quietly
-dominates the outcome. Dividing the weight by volatility equalises what each name
-contributes. This is visible in the live output: Divi's Labs ranks 4th but at
-23.8% vol gets **8.6%**, while top-ranked Samvardhana Motherson at 33.5% vol gets
-**6.8%** — a higher rank earning a smaller slice because it is riskier.
+### The first version was measured and rejected
 
-**Conviction tilt.** The inverse-vol weight is multiplied by a 0-1 conviction
-score from the same technical + consensus signals as the BUY/HOLD/SELL badge,
-tilted ±20% by the fundamental pillars where they exist. Names with a negative
-score get nothing rather than a token slice.
+The original model scored conviction from the same step functions the advice
+badge uses — `+1 if price > SMA50`, `+1 if 1-month return > 2%`, `-1 if RSI > 70`
+— plus analyst consensus, with fundamentals applied afterwards as a ±20% tilt.
+Measuring it rather than trusting it produced three disqualifying results:
 
-**Three caps**, because the failure mode of every scoring model is concentration:
-
-| Constraint | Value |
+| Measurement | Result |
 |---|---|
-| Single name | 15% |
-| Single sector | 35% |
-| Drop below | 2% (a 1% position is noise, not diversification) |
+| One-way turnover, **one day** | **17.4% of the portfolio** |
+| Loudest single input | **Analyst consensus** (mean abs contribution 1.11, above every technical factor) |
+| Fundamentals' contribution to the score | **0.00** |
 
-The caps interact — capping a name frees weight that can push a sector over, and
-scaling a sector down frees weight that can push a name over — so they are applied
-in an **alternating loop until both hold**, not once each. Applying them in
-sequence lets the second silently undo the first, which is exactly what the first
-implementation did (it produced a 40% position against a 15% cap).
+The turnover is the fatal one. Step functions flip on noise — a stock sitting on
+its 50-day average swings a full point back and forth — and the weights swing
+with them. At Indian brokerage plus STT, and with gains under 12 months taxed at
+slab rate rather than 12.5%, a column implying you rebalance 17% of a portfolio
+daily is worse than no column. The other two are upside-down relative to the
+evidence: one Yahoo field outweighed four technical factors, while value and
+profitability — the two best-documented cross-sectional premia — counted for
+nothing.
 
-**Cash is explicit.** The deployed share of the basket scales with mean
-conviction, so a weak-looking basket is not force-fitted to 100% invested. Where
-a constraint *cannot* be honoured the model says so rather than hiding it: a
-single-sector basket cannot satisfy a sector cap, and a basket where only five
-names clear the bar cannot deploy more than 5 × 15% = 75%. Both cases emit a
-plain-English warning under the table.
+### What replaced it
 
-**What it is not.** The weights are a share of *this basket*, not of net worth.
-The model has no knowledge of income, age, horizon, tax position, existing assets
-or cash needs, so it is a mechanical output of stated inputs rather than personal
-advice — `per_symbol[sym].reason` returns the arithmetic behind every number.
+`conviction.py` (consumed by `allocation.py`) scores the way factor models actually do: **continuous
+cross-sectional percentile ranks within the basket**, weighted by the strength of
+the published evidence.
+
+| Component | Weight | Basis |
+|---|---|---|
+| Momentum, 12-month excluding the last month | 25% | Jegadeesh & Titman (1993); Asness, Moskowitz & Pedersen (2013) |
+| Quality / profitability (ROE, ROA, margins) | 25% | Novy-Marx (2013); Fama-French RMW (2015) |
+| Value (earnings, book, EV/EBITDA yields) | 25% | Fama-French HML (1992) |
+| Long-term trend (price vs 200-day) | 15% | Slow-moving; the trend signal that does not thrash |
+| Analyst consensus | 10% | Womack (1996): signal sits in *revisions*, far less in levels — so this is now the smallest weight, not the largest |
+
+Two exclusions are deliberate. **1-month momentum** is dropped entirely: at that
+horizon the effect reverses (Jegadeesh 1990), so the old model's positive score
+had arguably the wrong sign. **Low volatility** is real (Frazzini & Pedersen 2014)
+but is already the divisor in the risk-parity step, and scoring it here too would
+double-count it.
+
+Ranking cross-sectionally is also what fixes the turnover: a small price move
+nudges a rank instead of flipping a threshold, and it makes a P/E and a 12-month
+return directly comparable.
+
+**Coverage shrinkage.** A name resolving only some components is shrunk toward
+neutral in proportion to how much of the weighting scheme actually resolved
+(James-Stein style). Without it GOLDBEES — an ETF with no fundamentals at all —
+would let two signals stand in for five and score as confidently as a name with
+full coverage.
+
+### Sizing, caps and honesty about what it is
+
+Weight is conviction above a 0.45 funding threshold, divided by volatility (equal
+*risk* contribution, not equal rupees), then capped at 15% per name and 35% per
+sector, dropping anything under 2%. The caps interact, so they are applied in an
+**alternating loop until both hold** — applying them once each in sequence let the
+sector pass silently undo the name cap and produce a 40% position against a 15%
+limit.
+
+Measured turnover after the rewrite:
+
+| Horizon | Before | After |
+|---|---|---|
+| 1 day | 17.4% | **2.2%** |
+| 1 month | 17.4% | 16.2% |
+
+Weights are rounded to 0.5% steps because finer precision implies confidence the
+model does not have, and the response carries a **3-percentage-point no-trade
+band** with a note that these are targets rather than daily instructions.
+
+Cash is a first-class output, and constraints that cannot be honoured are stated
+(a single-sector basket cannot satisfy a sector cap; five qualifying names cannot
+deploy past 75% under a 15% cap).
+
+**Nothing gives a name a higher weight for already being held.** Conviction is a
+function of the metrics only, so the same company scores identically in the
+watchlist and in the screener. The real limitation is the reverse: the watchlist
+basket *is* your existing holdings, so it can rebalance among them but can never
+say "sell this and buy something you do not own" — the screener table is where
+new names come from.
+
+The weights are a share of *that basket*, not of net worth. The model knows
+nothing about income, horizon, taxes or other assets.
 
 ## 6. Auth, chat (RAG), and voice
 

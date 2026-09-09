@@ -433,3 +433,51 @@ cache and **never triggers a fetch**. The watchlist is on a 60-second polling pa
 blocking it on ~13 Yahoo `info` calls would make the main table as slow as the AI
 panels it deliberately never waits on. Sector arrives once a drawer has been
 opened, and until then the sector cap treats that name as unknown.
+
+## 21. Rebuilding the sizing model after measuring it
+
+§20 described the first sizing model. Measuring it disqualified it, and the
+measurements are worth keeping because each one points at a different mistake.
+
+| Measurement | Result | What it revealed |
+|---|---|---|
+| One-day turnover | 17.4% | Step-function factors flip on noise |
+| Loudest input | Analyst consensus, 1.11 | One vendor field outweighed four technical factors |
+| Fundamentals' score contribution | 0.00 | The best-evidenced premia counted for nothing |
+
+### Step functions vs cross-sectional ranks
+
+| Option | Pros | Cons |
+|---|---|---|
+| **Continuous percentile ranks within the basket** ✅ | A small move nudges a rank instead of flipping a threshold — turnover fell 17.4% → 2.2% per day; unlike quantities become comparable | Scores are relative to the basket, so a uniformly poor basket still produces a "best" name |
+| Step functions (the original) | Trivially explainable | Flips on noise; unusable turnover |
+| Absolute thresholds per metric | Stable, comparable across baskets | Requires calibrated sector-by-sector bands for every metric, and they drift |
+
+The basket-relative caveat is real and is disclosed in the UI string rather than
+engineered away: with the funding threshold at 0.45 a genuinely weak basket
+still funds its least-bad names.
+
+### Component weights from evidence, not convenience
+
+The original weights were an accident of what was already computed. The rewrite
+sets them from the published cross-sectional literature — momentum, quality and
+value at 25% each, trend 15%, analyst consensus **cut from loudest input to 10%**
+because the evidence supports revisions rather than levels. 1-month momentum was
+removed outright: at that horizon the effect reverses, so the old model was
+plausibly scoring it with the wrong sign.
+
+### Turnover is a first-class constraint
+
+A sizing model that is correct but implies daily trading is wrong in practice —
+in India the round trip costs brokerage and STT and can convert a 12.5%
+long-term gain into a slab-rate short-term one. Hence 0.5% rounding, a stated
+3pp no-trade band, and an explicit "targets, not instructions" note. Turnover was
+measured before and after rather than assumed.
+
+### Why the watchlist warms fundamentals in the background
+
+Value and quality are half the weighting scheme and exist only for symbols whose
+fundamentals have been fetched, so on a cold cache the column funded 2 names and
+on a warm one 8 — visibly changing as you browsed. Fetching inline would put ~13
+Yahoo `info` calls on a 60-second poll. A daemon thread warms the cache once per
+symbol, so the first load costs nothing and every later load is a 24 h cache hit.

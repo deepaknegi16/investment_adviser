@@ -68,7 +68,7 @@ export default function PortfolioTable({ shares, onSelect, allocation }) {
                 </td>
                 <td><Ownership ownership={s.consensus?.ownership} /></td>
                 <td><AdviceBadge advice={s.advice} /></td>
-                <AllocCell pct={s.suggested_pct} why={s.suggested_why} />
+                <AllocCell pct={s.suggested_pct} why={s.suggested_why} signal={s.suggested_signal} />
               </>
             )}
           </tr>

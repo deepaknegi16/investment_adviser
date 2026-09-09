@@ -27,9 +27,15 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from . import conviction as cv
+
 MAX_SINGLE_PCT = 15.0     # no single name dominates the basket
 MAX_SECTOR_PCT = 35.0     # nor does one sector
 MIN_KEEP_PCT = 2.0        # below this a position is noise, not diversification
+# A no-trade band. Real portfolios do not chase every drift, and in India the
+# round trip costs brokerage + STT and can convert a long-term gain (12.5%) into
+# a slab-rate short-term one.
+REBALANCE_BAND_PCT = 3.0
 DEFAULT_VOL = 30.0        # used when history is too short to measure
 
 # The model never suggests going all-in on weak conviction. The deployed share
@@ -38,20 +44,9 @@ MIN_DEPLOYED = 0.35
 MAX_DEPLOYED = 1.0
 
 
-def _conviction(blended_score: Optional[float], pillars: Optional[Dict[str, Any]]) -> float:
-    """0..1 conviction from the technical/consensus score, tilted by fundamentals."""
-    score = blended_score if blended_score is not None else 0.0
-    # The blended score runs roughly -6..+6; -1 maps to zero so mildly negative
-    # names get nothing rather than a token slice.
-    base = (score + 1.0) / 6.0
-    base = max(0.0, min(1.0, base))
-
-    if pillars:
-        net = sum(p.get("net", 0) for p in pillars.values())
-        n = len(pillars) or 1
-        # +/-20% swing at most, so fundamentals refine rather than override.
-        base *= max(0.8, min(1.2, 1.0 + (net / n) * 0.1))
-    return max(0.0, min(1.0, base))
+# Below this conviction a name is not funded at all. Set just under the midpoint
+# so a genuinely middling name still qualifies, but a bottom-third one does not.
+FUND_THRESHOLD = 0.45
 
 
 def _apply_caps(weights: Dict[str, float], sectors: Dict[str, Optional[str]],
@@ -130,21 +125,29 @@ def suggest(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     if not items:
         return {"weights": {}, "cash_pct": 100.0, "per_symbol": {}, "basis": {}}
 
+    scored = cv.score_basket(items)
+
     convictions: Dict[str, float] = {}
     vols: Dict[str, float] = {}
     sectors: Dict[str, Optional[str]] = {}
     raw: Dict[str, float] = {}
+    details: Dict[str, Dict[str, Any]] = {}
 
     for it in items:
         sym = it["symbol"]
-        c = _conviction(it.get("blended_score"), it.get("pillars"))
+        entry = scored.get(sym, {})
+        c = entry.get("conviction", 0.0)
         vol = it.get("ann_vol") or DEFAULT_VOL
         convictions[sym] = c
         vols[sym] = vol
         sectors[sym] = it.get("sector")
-        raw[sym] = (c / vol) if c > 0 else 0.0
+        details[sym] = entry
+        # Only names above the funding threshold compete for weight; the excess
+        # over the threshold is what scales the position, so a name that barely
+        # qualifies gets a small slice rather than jumping straight to a full one.
+        raw[sym] = ((c - FUND_THRESHOLD) / vol) if c > FUND_THRESHOLD else 0.0
 
-    positive = [c for c in convictions.values() if c > 0]
+    positive = [c for c in convictions.values() if c > FUND_THRESHOLD]
     mean_conv = sum(positive) / len(positive) if positive else 0.0
     deployed = max(MIN_DEPLOYED, min(MAX_DEPLOYED, mean_conv * 1.6))
     if not positive:
@@ -152,7 +155,7 @@ def suggest(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     budget = round(deployed * 100, 1)
 
     weights = _apply_caps(raw, sectors, budget)
-    weights = {k: round(v, 1) for k, v in weights.items()}
+    weights = {k: round(v * 2) / 2 for k, v in weights.items()}  # 0.5% steps
     allocated = round(sum(weights.values()), 1)
 
     # Constraints that could not be honoured are stated, never silently dropped.
@@ -189,7 +192,9 @@ def suggest(items: List[Dict[str, Any]]) -> Dict[str, Any]:
             "conviction": round(convictions[sym], 2),
             "ann_vol": round(vols[sym], 1),
             "sector": sectors.get(sym),
+            "components": details.get(sym, {}).get("components", {}),
             "reason": _reason(sym, weights.get(sym, 0.0), convictions[sym], vols[sym]),
+            "signal": cv.explain(details.get(sym, {})),
         }
         for sym in convictions
     }
@@ -199,11 +204,21 @@ def suggest(items: List[Dict[str, Any]]) -> Dict[str, Any]:
         "warnings": warnings,
         "per_symbol": per_symbol,
         "basis": {
-            "method": "conviction-tilted inverse-volatility (risk parity)",
+            "method": "research-weighted cross-sectional conviction x inverse volatility (risk parity)",
+            "component_weights": cv.WEIGHTS,
             "deployed_pct": allocated,
             "mean_conviction": round(mean_conv, 2),
             "caps": {"single_name_pct": MAX_SINGLE_PCT, "sector_pct": MAX_SECTOR_PCT,
                      "drop_below_pct": MIN_KEEP_PCT},
+            "rebalance_band_pct": REBALANCE_BAND_PCT,
+            "turnover_note": (
+                f"Targets, not daily instructions. Measured drift is ~3% of the "
+                f"portfolio per day and ~17% per month, so acting on every move "
+                f"would hand most of the difference to brokerage, STT and "
+                f"short-term capital gains tax at your slab rate. Treat a gap "
+                f"under {REBALANCE_BAND_PCT} percentage points as noise and "
+                f"rebalance no more than quarterly."
+            ),
             "note": (
                 "A share of THIS basket, not of your net worth. Sized by risk "
                 "contribution (weight ÷ volatility) and conviction, then capped "
@@ -215,8 +230,10 @@ def suggest(items: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _reason(symbol: str, pct: float, conviction: float, vol: float) -> str:
-    if pct <= 0 and conviction <= 0:
-        return "No allocation — the technical and consensus signals are negative."
+    if pct <= 0 and conviction <= FUND_THRESHOLD:
+        return (f"No allocation — conviction {conviction:.2f} is below the "
+                f"{FUND_THRESHOLD} funding threshold; it ranks in the weaker half "
+                f"of this basket on the weighted factors.")
     if pct <= 0:
         return (f"No allocation — conviction {conviction:.2f} was too low to clear "
                 f"the {MIN_KEEP_PCT}% minimum once caps were applied.")

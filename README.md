@@ -102,26 +102,42 @@ The Vite dev server proxies `/api` to the backend on port 8000.
 
 ## Suggested position sizing
 
-Both the portfolio table and the top-20 picks carry a **Suggested** column: what
-share of that basket the model would put in each name.
+Both tables carry a **Suggested** column: what share of that basket the model
+would put in each name.
 
-Sizing is **conviction-tilted inverse volatility** — weight divided by
-volatility, so each position contributes similar risk rather than similar rupees,
-multiplied by a conviction score from the same signals behind the BUY/HOLD/SELL
-badge. Then three caps: 15% per name, 35% per sector, and anything under 2% is
-dropped as noise.
+Conviction is scored on **continuous cross-sectional ranks**, weighted by how
+strong the published evidence for each factor actually is:
 
-You can see it working: Divi's Labs ranks 4th but at 23.8% volatility gets 8.6%,
-while top-ranked Samvardhana Motherson at 33.5% volatility gets 6.8% — the higher
-rank earns a *smaller* slice because it is riskier.
+| Component | Weight |
+|---|---|
+| Momentum (12m excluding the last month) | 25% |
+| Quality / profitability | 25% |
+| Value | 25% |
+| Long-term trend (vs 200-day) | 15% |
+| Analyst consensus | 10% |
 
-Cash is explicit, and constraints that cannot be honoured are stated under the
-table rather than hidden (a single-sector basket cannot satisfy a sector cap; five
-qualifying names cannot deploy more than 75% under a 15% cap).
+That conviction is then divided by volatility, so each position contributes
+similar *risk* rather than similar rupees, and capped at 15% per name / 35% per
+sector.
 
-**These are a share of that basket, not of your net worth.** The model knows
-nothing about your income, horizon, taxes or other assets, so it is the mechanical
-output of the inputs above — hover any cell for the arithmetic behind it.
+**The first version of this was measured and thrown away.** It scored from step
+functions ("+1 if price > SMA50") and produced **17.4% one-way turnover per day**
+— you would have been trading a sixth of your portfolio daily, handing the
+difference to brokerage, STT and slab-rate short-term capital gains tax. It also
+made analyst consensus the loudest input while fundamentals contributed nothing.
+The rewrite brought daily turnover to **2.2%**.
+
+These are **targets, not daily instructions**: weights are rounded to 0.5% steps
+and the response carries a 3-percentage-point no-trade band. Rebalance quarterly
+at most.
+
+Nothing gives a name a higher weight for already being held — conviction depends
+on the metrics only. The real limit is the opposite: the watchlist basket *is*
+your holdings, so it can rebalance among them but never suggest something you do
+not own. That is what the screener table is for.
+
+**A share of that basket, not of your net worth.** The model knows nothing about
+your income, horizon, taxes or other assets. Hover any cell for the arithmetic.
 
 ## Fundamentals
 

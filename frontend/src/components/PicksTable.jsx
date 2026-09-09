@@ -67,7 +67,7 @@ export default function PicksTable({ onSelect }) {
                     <td><Pct value={p.ret_1m} /></td>
                     <td><Pct value={p.ret_1y} /></td>
                     <td><AdviceBadge advice={p.recommendation} /></td>
-                    <AllocCell pct={p.suggested_pct} why={p.suggested_why} />
+                    <AllocCell pct={p.suggested_pct} why={p.suggested_why} signal={p.suggested_signal} />
                     <td style={{ textAlign: "left", whiteSpace: "normal", minWidth: 220 }}>
                       {p.rationale}
                     </td>
