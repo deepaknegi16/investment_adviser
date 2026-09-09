@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import FundamentalsPanel from "./FundamentalsPanel.jsx";
 import LineChart from "./LineChart.jsx";
 import { AdviceBadge, Pct } from "./PortfolioTable.jsx";
 
@@ -260,6 +261,9 @@ export default function StockDrawer({ share, onClose, onRemove, onWatchlistChang
         </div>
 
         <div className="mini-panel" style={{ marginTop: 12 }}>
+          <h3>Fundamentals</h3>
+          <FundamentalsPanel symbol={share.symbol} />
+
           <h3>Latest news</h3>
           {aiLoading ? (
             <div className="muted">Fetching news…</div>

@@ -180,6 +180,68 @@ ranks those 30 — AI judgment where it adds value, arithmetic in code.
 
 All overridable via `ANALYST_MODEL` / `SCREENER_MODEL` / `CHAT_MODEL` / `GOLD_WATCH_MODEL` / `GROQ_MODEL` in `backend/.env`.
 
+## 3a. Fundamental metrics
+
+The portfolio table and the rules engine were entirely **technical** — price
+versus moving averages, momentum, RSI, analyst consensus. That answers "what is
+the price doing" and says nothing about "what is the business doing".
+`app/fundamentals.py` adds 20 fundamental metrics in five groups (valuation,
+profitability, growth, financial health, income), each shipped with what it is,
+how to read it, and its caveat — a bare ratio the reader has to go and look up
+is not information.
+
+### Two Yahoo quirks that had to be corrected, not displayed
+
+**Mixed currencies.** Some Indian companies report financials in USD while their
+share is quoted in INR — Infosys returns `currency=INR` with
+`financialCurrency=USD`. Yahoo divides an INR market cap by USD revenue, so any
+ratio spanning the two is wrong by exactly the USDINR rate:
+
+| Metric | Yahoo | Corrected |
+|---|---|---|
+| P/S | 205.98 | **2.17** |
+| EV/EBITDA | 977.15 | **10.28** |
+
+`get_fundamentals()` detects the mismatch, rescales the affected ratios using the
+USDINR series the gold agent already fetches, and records which ones it repaired
+so the UI can show an `fx` marker and explain itself. Ratios built from a single
+currency (P/E, P/B, ROE, margins, growth) are untouched.
+
+**Beta measured against the wrong index.** Yahoo's beta for NSE tickers is
+computed against a US index, producing values like −0.09 for ITC against its own
+market. Beta is recomputed here from ~2 years of daily returns against `^NSEI`:
+INFY 0.93 and HDFCBANK 1.09, versus Yahoo's 0.11 and 0.40.
+
+### Bands are sector-relative, and some metrics are suppressed
+
+A P/E of 30 is rich for a bank and ordinary for an FMCG name, so thresholds carry
+per-sector overrides. More importantly, metrics that are **not real quantities**
+for a sector are hidden rather than scored: debt-to-equity, current ratio,
+EV/EBITDA and operating margin are suppressed for lenders, because borrowing is
+their raw material rather than a risk signal (Yahoo returns a literal `0.0` gross
+margin for HDFC Bank).
+
+### Combinations, not single ratios
+
+The scorecard rolls metrics into five pillars (value / quality / growth / safety /
+income) and then matches the numbers against six classic **playbooks** — quality
+compounder, GARP, classic value, income, plus two deliberately negative ones:
+*value trap* (low P/E with falling revenue **and** falling earnings) and
+*leverage-flattered returns* (high ROE, low ROA, high debt). Single ratios almost
+never decide anything, and the same P/E means opposite things beside different
+companions; the negative patterns exist because the most expensive mistake is
+mistaking a deteriorating business for a bargain.
+
+`GET /api/stocks/{symbol}/fundamentals` returns the scorecard;
+`GET /api/stocks/fundamentals/guide` returns the whole catalogue and playbooks as
+a reference.
+
+**This is deliberately not folded into the BUY/HOLD/SELL score.** The table's
+advice is a technical + consensus call today, and silently changing what it means
+would move every badge in the portfolio without anyone asking for it. The
+fundamental factors are computed and returned (`factors`), ready to blend if that
+is ever wanted.
+
 ## 3b. Auth, chat (RAG), and voice
 
 **Authentication (JWT).** `POST /api/auth/login` checks credentials from
@@ -424,6 +486,8 @@ than by a query — dedupe cannot be forgotten at a call site.
 | `GET /api/search?q=` | NSE symbol lookup for the add dialog |
 | `GET /api/stocks/{symbol}/history?period=` | Chart series (1w/1m/1y/5y) |
 | `GET /api/stocks/{symbol}/analysis[?refresh=true]` | Cached / fresh AI analysis |
+| `GET /api/stocks/{symbol}/fundamentals` | 20 fundamental metrics, each explained, grouped into pillars, with matched playbooks |
+| `GET /api/stocks/fundamentals/guide` | The metric catalogue and combination playbooks as a standalone reference |
 | `GET /api/picks[?refresh=true]` | Cached / fresh top-20 |
 | `POST /api/auth/login` | Credentials → JWT (the only public endpoint besides health) |
 | `POST /api/chat` | RAG-grounded chat: `{message, history}` → `{reply, sources, provider, retrieval_mode}`; every turn logged to `chat_log` |

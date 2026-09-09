@@ -350,3 +350,43 @@ quality score.
 silently replaced the RAG numbers with numbers of a different shape — a
 dashboard quietly showing the wrong thing, which is the failure class this whole
 change exists to prevent.
+
+## 19. Fundamental metrics
+
+### Trusting the vendor's ratios, or recomputing them?
+
+| Option | Pros | Cons |
+|---|---|---|
+| **Show Yahoo's fields, but repair the ones that are provably wrong** ✅ | Free and instant for ~20 metrics; the two broken classes are detectable (`currency != financialCurrency`) and correctable with an FX rate already in the app | Repair logic to maintain, and it only fixes what we know is broken |
+| Show Yahoo's fields as-is | No work | Ships P/S of 206 and EV/EBITDA of 977 for Infosys, and a −0.09 beta for ITC. Numbers that are visibly absurd destroy trust in the ones that are fine |
+| Compute everything from the financial statements | Fully controlled | `yf.Ticker().financials` is sparse and inconsistent for NSE names; this is a personal dashboard, not a data vendor |
+| Pay for a fundamentals API | Clean, reliable | A subscription for a single-user app |
+
+The mixed-currency bug is worth stating precisely because it is invisible: the
+market cap is INR, the revenue is USD, and the resulting ratio is off by the
+USDINR rate (~94x) with no error anywhere. Yahoo's own website shows these
+uncorrected.
+
+### Sector-relative bands, and suppression
+
+Thresholds carry per-sector overrides, and metrics that are not real quantities
+for a sector are **hidden rather than scored**. Yahoo reports a gross margin of
+`0.0` for HDFC Bank; debt-to-equity for a lender measures the business model, not
+risk. Showing a bank a red "debt too high" flag would be actively misleading —
+worse than showing nothing, because it looks like a finding.
+
+### Why playbooks rather than a single fundamental score
+
+| Option | Pros | Cons |
+|---|---|---|
+| **Pillars + named combination patterns** ✅ | Matches how the metrics are actually used — the same P/E means opposite things beside different companions; the two negative patterns (value trap, leverage-flattered ROE) catch the expensive mistakes | Patterns are conventions and need judgment |
+| One blended 0-100 "fundamental score" | Simple to display, sortable | Collapses the reason into a number. A 62 tells you nothing about whether to worry about debt or growth |
+| Raw metrics, no interpretation | Neutral | The user asked what these mean; a table of ratios is what they already can't read |
+
+### Not folded into BUY/HOLD/SELL
+
+The advice badge is a technical + consensus call. Adding fundamentals to it would
+have moved every badge in the portfolio table without being asked — a silent
+change to the meaning of an existing number. The factors are computed and
+returned so blending is a one-line change if it is ever wanted, but the default
+stays put.

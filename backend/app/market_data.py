@@ -17,10 +17,12 @@ import yfinance as yf
 
 PRICE_TTL = 600  # seconds
 CONSENSUS_TTL = 86400
+FUNDAMENTALS_TTL = 86400
 
 _lock = threading.Lock()
 _history_cache: Dict[str, dict] = {}  # key: sorted symbols tuple -> {ts, data}
 _consensus_cache: Dict[str, dict] = {}  # symbol -> {ts, data}
+_fundamentals_cache: Dict[str, dict] = {}  # symbol -> {ts, data}
 
 
 def _rsi(closes: pd.Series, period: int = 14) -> Optional[float]:
@@ -239,3 +241,143 @@ def get_named_holders(symbol: str) -> List[dict]:
     with _lock:
         _holders_cache[symbol] = {"ts": time.time(), "data": holders}
     return holders
+
+
+# ---------------------------------------------------------------- fundamentals
+
+def _usdinr() -> Optional[float]:
+    """Spot USDINR, used to repair Yahoo's mixed-currency ratios (see below)."""
+    try:
+        closes = get_closes(["USDINR=X"]).get("USDINR=X")
+        if closes is not None and not closes.empty:
+            return float(closes.iloc[-1])
+    except Exception:
+        pass
+    return None
+
+
+def _beta_vs_nifty(symbol: str) -> Optional[float]:
+    """Beta against the Nifty 50 over ~2 years of daily returns.
+
+    Yahoo's own `beta` for NSE tickers is measured against a US index, which
+    produces values like -0.09 for ITC — not credible against its own market.
+    We already hold the price history, so the honest number is cheap to compute.
+    """
+    try:
+        data = get_closes([symbol, "^NSEI"])
+        stock, index = data.get(symbol), data.get("^NSEI")
+        if stock is None or index is None:
+            return None
+        import numpy as np
+
+        df = pd.concat({"s": stock, "i": index}, axis=1).dropna().iloc[-504:]
+        if len(df) < 120:
+            return None
+        rs = np.log(df["s"]).diff().dropna()
+        ri = np.log(df["i"]).diff().dropna()
+        aligned = pd.concat({"s": rs, "i": ri}, axis=1).dropna()
+        var = float(aligned["i"].var())
+        if var == 0:
+            return None
+        return round(float(aligned["s"].cov(aligned["i"])) / var, 2)
+    except Exception:
+        return None
+
+
+def _pct(value, scale=100.0):
+    return round(value * scale, 2) if isinstance(value, (int, float)) else None
+
+
+def get_fundamentals(symbol: str) -> dict:
+    """Normalised fundamental metrics for an NSE symbol.
+
+    Two Yahoo quirks are corrected here rather than shown to the user raw:
+
+    1. **Mixed currencies.** Some Indian companies report financials in USD
+       while their quote is in INR (Infosys: currency=INR, financialCurrency=USD).
+       Yahoo divides an INR market cap by USD revenue, so P/S comes back as 206
+       instead of 2.2 and EV/EBITDA as 977 instead of 10.3 — both off by exactly
+       the USDINR rate. Ratios that mix the two are rescaled, and `repaired`
+       records that it happened.
+    2. **Beta against the wrong index** — recomputed against the Nifty 50.
+
+    Returns {"available": False} for ETFs and anything without fundamentals.
+    """
+    with _lock:
+        entry = _fundamentals_cache.get(symbol)
+        if entry and time.time() - entry["ts"] < FUNDAMENTALS_TTL:
+            return entry["data"]
+
+    result: Dict[str, object] = {"available": False, "symbol": symbol}
+    try:
+        info = yf.Ticker(symbol).info or {}
+    except Exception:
+        info = {}
+
+    if info.get("trailingPE") is None and info.get("marketCap") is None:
+        # ETFs (GOLDBEES) and index funds have no fundamentals to show.
+        result["reason"] = (
+            "No fundamentals published for this symbol — ETFs and index funds "
+            "hold assets rather than running a business, so P/E, ROE and margins "
+            "do not exist for them."
+        )
+        with _lock:
+            _fundamentals_cache[symbol] = {"ts": time.time(), "data": result}
+        return result
+
+    quote_ccy = info.get("currency")
+    fin_ccy = info.get("financialCurrency")
+    mixed = bool(quote_ccy and fin_ccy and quote_ccy != fin_ccy)
+    fx = _usdinr() if mixed else None
+    repaired: List[str] = []
+
+    def fix_ratio(value, key):
+        """Rescale a ratio built from an INR numerator and a USD denominator."""
+        if value is None:
+            return None
+        if mixed and fx:
+            repaired.append(key)
+            return round(value / fx, 2)
+        return round(value, 2)
+
+    market_cap = info.get("marketCap")
+    metrics = {
+        "trailing_pe": round(info["trailingPE"], 2) if info.get("trailingPE") else None,
+        "forward_pe": round(info["forwardPE"], 2) if info.get("forwardPE") else None,
+        "peg": round(info["pegRatio"], 2) if info.get("pegRatio")
+               else (round(info["trailingPegRatio"], 2) if info.get("trailingPegRatio") else None),
+        "price_to_book": round(info["priceToBook"], 2) if info.get("priceToBook") else None,
+        "price_to_sales": fix_ratio(info.get("priceToSalesTrailing12Months"), "price_to_sales"),
+        "ev_to_ebitda": fix_ratio(info.get("enterpriseToEbitda"), "ev_to_ebitda"),
+        "roe": _pct(info.get("returnOnEquity")),
+        "roa": _pct(info.get("returnOnAssets")),
+        "profit_margin": _pct(info.get("profitMargins")),
+        "operating_margin": _pct(info.get("operatingMargins")),
+        "revenue_growth": _pct(info.get("revenueGrowth")),
+        "earnings_growth": _pct(info.get("earningsGrowth")),
+        # Yahoo already returns debtToEquity and dividendYield as percentages.
+        "debt_to_equity": round(info["debtToEquity"], 1) if info.get("debtToEquity") is not None else None,
+        "current_ratio": round(info["currentRatio"], 2) if info.get("currentRatio") else None,
+        "dividend_yield": round(info["dividendYield"], 2) if info.get("dividendYield") else None,
+        "payout_ratio": _pct(info.get("payoutRatio")),
+        "beta": _beta_vs_nifty(symbol),
+        "market_cap_cr": round(market_cap / 1e7) if market_cap else None,  # 1 crore = 1e7
+        "eps": round(info["trailingEps"], 2) if info.get("trailingEps") else None,
+        "book_value": round(info["bookValue"], 2) if info.get("bookValue") else None,
+    }
+
+    result = {
+        "available": True,
+        "symbol": symbol,
+        "sector": info.get("sector"),
+        "industry": info.get("industry"),
+        "quote_currency": quote_ccy,
+        "financial_currency": fin_ccy,
+        "mixed_currency": mixed,
+        "usdinr_used": round(fx, 2) if fx else None,
+        "repaired": repaired,
+        "metrics": metrics,
+    }
+    with _lock:
+        _fundamentals_cache[symbol] = {"ts": time.time(), "data": result}
+    return result

@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from .. import fundamentals as fnd
 from .. import market_data, rag, recommend
 from ..agents.analyst import analyze_stock
 from ..agents.gold_watch import is_gold_etf
@@ -51,6 +52,40 @@ def summary(symbol: str, db: Session = Depends(get_db)):
         "advice_logic": rec["logic"],
         "consensus": consensus,
         "in_watchlist": db.get(WatchlistItem, symbol) is not None,
+    }
+
+
+@router.get("/{symbol}/fundamentals")
+def fundamentals(symbol: str):
+    """Fundamental metrics with what each one means and how to read it.
+
+    Deliberately NOT folded into the /summary advice score: the portfolio table's
+    BUY/HOLD/SELL is a technical + consensus call today, and quietly changing what
+    it means would move every badge in the table without the user asking.
+    """
+    symbol = symbol.upper()
+    raw = market_data.get_fundamentals(symbol)
+    report = recommend.fundamental_report(raw)
+    report["symbol"] = symbol
+    report["factors"] = recommend.fundamental_factors(report)
+    return report
+
+
+@router.get("/fundamentals/guide")
+def fundamentals_guide():
+    """The reference: every metric explained, plus the combination playbooks."""
+    return {
+        "metrics": [
+            {"key": k, **{f: v for f, v in meta.items() if f != "sector_good"}}
+            for k, meta in fnd.CATALOGUE.items()
+        ],
+        "playbooks": fnd.PLAYBOOKS,
+        "note": (
+            "Bands are conventions, not rules, and they shift by sector — a P/E "
+            "of 30 is rich for a bank and ordinary for an FMCG name. Single "
+            "ratios almost never decide anything; the combinations are where the "
+            "signal is. Informational research, not personalised financial advice."
+        ),
     }
 
 

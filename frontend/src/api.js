@@ -43,6 +43,8 @@ export const api = {
   summary: (symbol) => request(`/api/stocks/${symbol}/summary`),
   holders: (symbol, refresh = false) =>
     request(`/api/stocks/${symbol}/holders${refresh ? "?refresh=true" : ""}`),
+  fundamentals: (symbol) => request(`/api/stocks/${symbol}/fundamentals`),
+  fundamentalsGuide: () => request("/api/stocks/fundamentals/guide"),
   analysis: (symbol, refresh = false) =>
     request(`/api/stocks/${symbol}/analysis${refresh ? "?refresh=true" : ""}`),
   picks: (refresh = false) => request(`/api/picks${refresh ? "?refresh=true" : ""}`),

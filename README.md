@@ -97,6 +97,34 @@ The Vite dev server proxies `/api` to the backend on port 8000.
   are isolated in `backend/app/market_data.py` and cached (prices 10 min, analyst
   consensus 24 h).
 
+## Fundamentals
+
+Open any share and the drawer now shows **20 fundamental metrics** — P/E (trailing
+and forward), PEG, P/B, P/S, EV/EBITDA, ROE, ROA, margins, revenue and earnings
+growth, debt-to-equity, current ratio, dividend yield, payout ratio, beta, market
+cap, EPS and book value.
+
+Click any metric to see **what it is, how to read it, and its caveat**. Above them,
+five pillar ratings (value / quality / growth / safety / income) and any classic
+**combination playbooks** the numbers currently match — quality compounder, GARP,
+classic value, income, plus two warnings: *value trap* (low P/E with falling
+revenue and earnings) and *leverage-flattered returns* (high ROE, low ROA, high
+debt). Single ratios rarely decide anything; the combinations are where the signal
+is.
+
+Two things are corrected rather than shown raw, both invisible in Yahoo's own UI:
+
+- **Mixed currencies.** Infosys quotes in INR but reports financials in USD, so
+  Yahoo's P/S reads 205.98 instead of 2.17 and EV/EBITDA 977 instead of 10.28.
+  Ratios spanning both currencies are rescaled and marked `fx`.
+- **Beta against a US index.** Recomputed against the Nifty 50 — ITC's Yahoo beta
+  of −0.09 is not a credible number against its own market.
+
+Bands are sector-relative, and metrics that aren't real quantities for a sector
+(a bank's debt-to-equity or gross margin) are hidden rather than flagged red.
+
+`GET /api/stocks/{symbol}/fundamentals` · `GET /api/stocks/fundamentals/guide`
+
 ## Gold Watch — GOLDBEES factor monitor
 
 A dedicated agent for `GOLDBEES.NS` (Nippon India ETF Gold BeES). A gold ETF has no
