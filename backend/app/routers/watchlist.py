@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import market_data, recommend
+from .. import allocation, market_data, recommend
 from ..db import WatchlistItem, get_db
 
 router = APIRouter(prefix="/api")
@@ -40,8 +40,35 @@ def get_watchlist(db: Session = Depends(get_db)):
             "advice": rec["advice"],
             "advice_logic": rec["logic"],
             "consensus": consensus,
+            "sector": None,  # filled below, only for names that made the cut
         })
-    return {"shares": shares}
+
+    # Suggested position sizes across the basket. Sector comes from the cached
+    # fundamentals when we already have them — never a fresh network call here,
+    # because this endpoint is on the 60-second polling path.
+    alloc_items = []
+    for sh in shares:
+        if sh.get("error"):
+            continue
+        sector = market_data.cached_sector(sh["symbol"])
+        sh["sector"] = sector
+        alloc_items.append({
+            "symbol": sh["symbol"],
+            "blended_score": (sh.get("advice_logic") or {}).get("blended_score"),
+            "ann_vol": sh.get("ann_vol"),
+            "sector": sector,
+        })
+    alloc = allocation.suggest(alloc_items)
+    for sh in shares:
+        info = alloc["per_symbol"].get(sh["symbol"], {})
+        sh["suggested_pct"] = info.get("suggested_pct", 0.0)
+        sh["suggested_why"] = info.get("reason")
+
+    return {"shares": shares, "allocation": {
+        "cash_pct": alloc["cash_pct"],
+        "warnings": alloc["warnings"],
+        "basis": alloc["basis"],
+    }}
 
 
 @router.post("/watchlist", status_code=201)

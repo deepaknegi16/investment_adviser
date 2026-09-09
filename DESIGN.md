@@ -242,6 +242,52 @@ would move every badge in the portfolio without anyone asking for it. The
 fundamental factors are computed and returned (`factors`), ready to blend if that
 is ever wanted.
 
+## 3a2. Suggested position sizing
+
+A BUY badge says *whether*, not *how much* — and position sizing is where the
+larger mistakes are made. `app/allocation.py` adds a **Suggested** column to both
+the portfolio table and the top-20 picks, using two standard ideas and three hard
+constraints.
+
+**Inverse-volatility weighting (risk parity).** Equal rupees is not equal risk. A
+45%-vol small cap and a 20%-vol large cap held at the same weight contribute
+wildly different amounts of portfolio movement, and the volatile one quietly
+dominates the outcome. Dividing the weight by volatility equalises what each name
+contributes. This is visible in the live output: Divi's Labs ranks 4th but at
+23.8% vol gets **8.6%**, while top-ranked Samvardhana Motherson at 33.5% vol gets
+**6.8%** — a higher rank earning a smaller slice because it is riskier.
+
+**Conviction tilt.** The inverse-vol weight is multiplied by a 0-1 conviction
+score from the same technical + consensus signals as the BUY/HOLD/SELL badge,
+tilted ±20% by the fundamental pillars where they exist. Names with a negative
+score get nothing rather than a token slice.
+
+**Three caps**, because the failure mode of every scoring model is concentration:
+
+| Constraint | Value |
+|---|---|
+| Single name | 15% |
+| Single sector | 35% |
+| Drop below | 2% (a 1% position is noise, not diversification) |
+
+The caps interact — capping a name frees weight that can push a sector over, and
+scaling a sector down frees weight that can push a name over — so they are applied
+in an **alternating loop until both hold**, not once each. Applying them in
+sequence lets the second silently undo the first, which is exactly what the first
+implementation did (it produced a 40% position against a 15% cap).
+
+**Cash is explicit.** The deployed share of the basket scales with mean
+conviction, so a weak-looking basket is not force-fitted to 100% invested. Where
+a constraint *cannot* be honoured the model says so rather than hiding it: a
+single-sector basket cannot satisfy a sector cap, and a basket where only five
+names clear the bar cannot deploy more than 5 × 15% = 75%. Both cases emit a
+plain-English warning under the table.
+
+**What it is not.** The weights are a share of *this basket*, not of net worth.
+The model has no knowledge of income, age, horizon, tax position, existing assets
+or cash needs, so it is a mechanical output of stated inputs rather than personal
+advice — `per_symbol[sym].reason` returns the arithmetic behind every number.
+
 ## 3b. Auth, chat (RAG), and voice
 
 **Authentication (JWT).** `POST /api/auth/login` checks credentials from
@@ -481,7 +527,7 @@ than by a query — dedupe cannot be forgotten at a call site.
 
 | Endpoint | Behavior |
 |---|---|
-| `GET /api/watchlist` | Full table (prices, returns, status, advice) |
+| `GET /api/watchlist` | Full table (prices, returns, status, advice, suggested weight) + basket `allocation` block |
 | `POST /api/watchlist` / `DELETE /api/watchlist/{symbol}` | Add / remove a share |
 | `GET /api/search?q=` | NSE symbol lookup for the add dialog |
 | `GET /api/stocks/{symbol}/history?period=` | Chart series (1w/1m/1y/5y) |

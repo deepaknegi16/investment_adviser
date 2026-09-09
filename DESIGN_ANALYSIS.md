@@ -390,3 +390,46 @@ have moved every badge in the portfolio table without being asked — a silent
 change to the meaning of an existing number. The factors are computed and
 returned so blending is a one-line change if it is ever wanted, but the default
 stays put.
+
+## 20. Position sizing
+
+### What drives the weight?
+
+| Option | Pros | Cons |
+|---|---|---|
+| **Conviction-tilted inverse volatility** ✅ | Equalises *risk* contribution rather than rupees, which is what actually determines portfolio outcomes; uses signals the app already computes; every number is explainable | Volatility is backward-looking and says nothing about business risk |
+| Equal weight | Trivial, hard to argue with | A 45%-vol name and a 20%-vol name at equal weight are not equal bets; the volatile one dominates |
+| Rank-proportional | Simple, follows the screen | Ignores risk entirely — the top-ranked name is often the most volatile |
+| Mean-variance optimisation (Markowitz) | Theoretically optimal | Notoriously unstable: tiny changes in estimated returns produce wildly different portfolios, and it needs a covariance matrix estimated from data this app does not keep |
+
+### Caps, and why they are applied in a loop
+
+Single-name 15%, sector 35%, drop-below 2%. The first implementation applied the
+name cap then the sector cap once each, and the sector redistribution pushed a
+name back to **40% against a 15% cap** — the second pass silently undid the first.
+They now alternate until both hold. Any scoring model's characteristic failure is
+concentration, so the caps are the part that most needed testing, and they are
+checked against four baskets including degenerate ones.
+
+### Stating what cannot be satisfied
+
+A single-sector basket cannot honour a sector cap. A basket where five names clear
+the bar cannot deploy more than 75% under a 15% name cap. Both are surfaced as
+warnings rather than quietly ignored, because a number that looks like a
+recommendation while silently violating its own stated constraint is worse than no
+number.
+
+### Cash as a first-class output
+
+The deployed share scales with mean conviction, and the remainder is shown as
+cash. The alternative — always normalising to 100% invested — would imply the
+model is equally confident in every market, and would push weight into names it
+actively dislikes purely to make the column add up.
+
+### Why the watchlist does not fetch sectors
+
+Sector data comes from `market_data.cached_sector()`, which reads the fundamentals
+cache and **never triggers a fetch**. The watchlist is on a 60-second polling path;
+blocking it on ~13 Yahoo `info` calls would make the main table as slow as the AI
+panels it deliberately never waits on. Sector arrives once a drawer has been
+opened, and until then the sector cap treats that name as unknown.

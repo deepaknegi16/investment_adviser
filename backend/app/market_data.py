@@ -157,6 +157,23 @@ def get_consensus_bulk(symbols: List[str]) -> Dict[str, dict]:
     return dict(zip(symbols, results))
 
 
+def _ann_vol(closes: pd.Series) -> Optional[float]:
+    """Annualised volatility from ~1y of daily log returns, in percent.
+
+    Needed for position sizing: allocating equal rupees to a 20%-vol and a
+    45%-vol stock gives the second one more than twice the risk contribution.
+    """
+    import numpy as np
+
+    if len(closes) < 60:
+        return None
+    rets = np.log(closes.iloc[-253:]).diff().dropna()
+    if rets.empty:
+        return None
+    vol = float(rets.std()) * (252 ** 0.5) * 100
+    return round(vol, 1) if vol > 0 else None
+
+
 def compute_metrics(closes: pd.Series) -> dict:
     """All derived per-symbol numbers from a 5y close series."""
     price = float(closes.iloc[-1])
@@ -177,6 +194,7 @@ def compute_metrics(closes: pd.Series) -> dict:
         "high52": round(high52, 2),
         "low52": round(low52, 2),
         "pct_from_high52": round((price / high52 - 1) * 100, 1) if high52 else None,
+        "ann_vol": _ann_vol(closes),
     }
 
 
@@ -381,3 +399,18 @@ def get_fundamentals(symbol: str) -> dict:
     with _lock:
         _fundamentals_cache[symbol] = {"ts": time.time(), "data": result}
     return result
+
+
+def cached_sector(symbol: str) -> Optional[str]:
+    """Sector from the fundamentals cache only — never triggers a fetch.
+
+    The watchlist is polled every 60 seconds; blocking it on ~13 Yahoo `info`
+    calls would make the main table as slow as the AI panels it deliberately
+    avoids waiting on. Sector arrives once the drawer has been opened for a
+    symbol, and until then allocation simply treats it as unknown.
+    """
+    with _lock:
+        entry = _fundamentals_cache.get(symbol)
+    if not entry:
+        return None
+    return (entry.get("data") or {}).get("sector")

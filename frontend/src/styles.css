@@ -362,3 +362,20 @@ button.danger { background: transparent; color: var(--red); border: 1px solid va
   font-size: 11.5px; line-height: 1.5; color: var(--muted); margin: 8px 0 0;
   padding: 7px 9px; border-radius: 5px; background: var(--panel-2, rgba(255,255,255,0.03));
 }
+
+/* ------------------------------------------------- suggested allocation */
+.alloc-cell { white-space: nowrap; min-width: 76px; }
+.alloc-pct { font-variant-numeric: tabular-nums; font-weight: 600; }
+.alloc-zero { color: var(--muted); }
+.alloc-bar {
+  display: block; height: 3px; margin-top: 3px; border-radius: 2px;
+  background: var(--border); overflow: hidden;
+}
+.alloc-bar i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+.alloc-note {
+  margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--panel-2, rgba(255,255,255,0.02)); font-size: 12.5px;
+}
+.alloc-note-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.alloc-warn { margin-top: 6px; color: var(--orange); line-height: 1.5; }
+.alloc-fine { margin-top: 6px; color: var(--muted); line-height: 1.5; font-size: 11.5px; }

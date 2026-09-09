@@ -97,6 +97,29 @@ The Vite dev server proxies `/api` to the backend on port 8000.
   are isolated in `backend/app/market_data.py` and cached (prices 10 min, analyst
   consensus 24 h).
 
+## Suggested position sizing
+
+Both the portfolio table and the top-20 picks carry a **Suggested** column: what
+share of that basket the model would put in each name.
+
+Sizing is **conviction-tilted inverse volatility** — weight divided by
+volatility, so each position contributes similar risk rather than similar rupees,
+multiplied by a conviction score from the same signals behind the BUY/HOLD/SELL
+badge. Then three caps: 15% per name, 35% per sector, and anything under 2% is
+dropped as noise.
+
+You can see it working: Divi's Labs ranks 4th but at 23.8% volatility gets 8.6%,
+while top-ranked Samvardhana Motherson at 33.5% volatility gets 6.8% — the higher
+rank earns a *smaller* slice because it is riskier.
+
+Cash is explicit, and constraints that cannot be honoured are stated under the
+table rather than hidden (a single-sector basket cannot satisfy a sector cap; five
+qualifying names cannot deploy more than 75% under a 15% cap).
+
+**These are a share of that basket, not of your net worth.** The model knows
+nothing about your income, horizon, taxes or other assets, so it is the mechanical
+output of the inputs above — hover any cell for the arithmetic behind it.
+
 ## Fundamentals
 
 Open any share and the drawer now shows **20 fundamental metrics** — P/E (trailing

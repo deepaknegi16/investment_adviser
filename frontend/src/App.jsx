@@ -11,6 +11,7 @@ import MetricsDialog from "./components/MetricsDialog.jsx";
 export default function App() {
   const [authed, setAuthed] = useState(() => Boolean(getToken()));
   const [shares, setShares] = useState(null);
+  const [allocation, setAllocation] = useState(null);
   const [error, setError] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
   const [selected, setSelected] = useState(null);
@@ -27,6 +28,7 @@ export default function App() {
     try {
       const data = await api.watchlist();
       setShares(data.shares);
+      setAllocation(data.allocation || null);
       setUpdatedAt(new Date());
       setError(null);
     } catch (e) {
@@ -89,7 +91,7 @@ export default function App() {
           {shares === null ? (
             <div className="loading">Loading market data…</div>
           ) : (
-            <PortfolioTable shares={shares} onSelect={setSelected} />
+            <PortfolioTable shares={shares} onSelect={setSelected} allocation={allocation} />
           )}
         </div>
       </div>

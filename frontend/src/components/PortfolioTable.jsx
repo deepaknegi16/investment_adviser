@@ -4,6 +4,9 @@ export function Pct({ value }) {
   return <span className={cls}>{value > 0 ? "+" : ""}{value.toFixed(1)}%</span>;
 }
 
+import AllocCell from "./AllocCell.jsx";
+import AllocationNote from "./AllocationNote.jsx";
+
 export function AdviceBadge({ advice }) {
   if (!advice) return <span className="muted">—</span>;
   const cls = advice.includes("BUY") ? "buy" : advice === "SELL" ? "sell" : "hold";
@@ -23,11 +26,12 @@ export function Ownership({ ownership }) {
   );
 }
 
-export default function PortfolioTable({ shares, onSelect }) {
+export default function PortfolioTable({ shares, onSelect, allocation }) {
   if (shares.length === 0) {
     return <div className="loading">Watchlist is empty — add a share to get started.</div>;
   }
   return (
+    <>
     <table>
       <thead>
         <tr>
@@ -40,6 +44,7 @@ export default function PortfolioTable({ shares, onSelect }) {
           <th style={{ textAlign: "center" }}>Status</th>
           <th>Big holders</th>
           <th>Advice</th>
+          <th title="Suggested share of this basket — sized by conviction and volatility, capped for concentration">Suggested</th>
         </tr>
       </thead>
       <tbody>
@@ -63,11 +68,14 @@ export default function PortfolioTable({ shares, onSelect }) {
                 </td>
                 <td><Ownership ownership={s.consensus?.ownership} /></td>
                 <td><AdviceBadge advice={s.advice} /></td>
+                <AllocCell pct={s.suggested_pct} why={s.suggested_why} />
               </>
             )}
           </tr>
         ))}
       </tbody>
     </table>
+    <AllocationNote allocation={allocation} />
+    </>
   );
 }

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import AllocCell from "./AllocCell.jsx";
+import AllocationNote from "./AllocationNote.jsx";
 import { AdviceBadge, Pct } from "./PortfolioTable.jsx";
 
 export default function PicksTable({ onSelect }) {
@@ -49,6 +51,7 @@ export default function PicksTable({ onSelect }) {
                   <th>1M</th>
                   <th>1Y</th>
                   <th>Advice</th>
+                  <th title="Suggested share of this basket — sized by conviction and volatility, capped for concentration">Suggested</th>
                   <th style={{ textAlign: "left" }}>Why</th>
                 </tr>
               </thead>
@@ -64,6 +67,7 @@ export default function PicksTable({ onSelect }) {
                     <td><Pct value={p.ret_1m} /></td>
                     <td><Pct value={p.ret_1y} /></td>
                     <td><AdviceBadge advice={p.recommendation} /></td>
+                    <AllocCell pct={p.suggested_pct} why={p.suggested_why} />
                     <td style={{ textAlign: "left", whiteSpace: "normal", minWidth: 220 }}>
                       {p.rationale}
                     </td>
@@ -71,6 +75,7 @@ export default function PicksTable({ onSelect }) {
                 ))}
               </tbody>
             </table>
+              <AllocationNote allocation={data?.allocation} />
             <div style={{ padding: "10px 14px" }} className="muted">
               {data.market_note} · Generated {data.generated_at}
               {data.cached ? " (cached from an earlier day — refresh for today's picks)" : ""}
