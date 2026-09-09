@@ -80,8 +80,11 @@ The Vite dev server proxies `/api` to the backend on port 8000.
   an auto-generated golden set) and generation (Gemini-as-judge faithfulness +
   relevance). Run: `.venv/bin/python eval_rag.py [--no-judge] [--judge-sample N]`.
 - `GET /api/metrics` (JWT) reports corpus health, cache state, chat quality
-  (provider breakdown, Groq-fallback rate, avg similarity, latency), and the
-  latest eval results. Details: AGENTIC_AI_DESIGN.md §12.
+  (provider breakdown, Groq-fallback rate, avg similarity, latency), the latest
+  RAG eval results, **gold-watch stats** (sweeps, bias, events by factor, email
+  config state) and **guardrail counters** (violations by kind, trusted-event
+  rate, suppressed alerts, last `eval_gold.py` verdict).
+  Details: AGENTIC_AI_DESIGN.md §12.
 
 ## Notes
 

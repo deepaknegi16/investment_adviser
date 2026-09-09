@@ -20,7 +20,9 @@ flowchart LR
         PR[picks router]
         GR[gold router]
         MD[market_data service - yfinance wrapper + caches]
-        RE[recommend - rules engine]
+        RE[recommend - rules engine + fundamental scorecard]
+        FN[fundamentals - metric catalogue, bands, playbooks]
+        AL[allocation - risk-parity position sizing]
         GF[gold_factors - k decomposition + attribution]
         GS[gold_scenarios - driver-path projection]
         AG1[Analyst Agent]
@@ -40,6 +42,10 @@ flowchart LR
     UI -- "/api/*" --> WR & AR & PR & GR
     WR --> MD --> Y
     WR --> RE
+    WR --> AL
+    PR --> AL
+    AR --> FN
+    RE --> FN
     AR --> AG1 --> RUN --> O
     AR -. "gold ETF symbol" .-> AG3
     RUN -. rate-limit fallback .-> G
@@ -60,6 +66,8 @@ and nothing above ever waits on anything below:
 |---|---|---|---|
 | **Deterministic market data** (`market_data.py` + `recommend.py`) | free | seconds | Main table: prices, returns, status color, base advice |
 | **Rules engine** (`recommend.py`) | free | instant | Status 🟢🟠🔴 + BUY MORE/HOLD/SELL from technicals + analyst consensus |
+| **Fundamentals** (`fundamentals.py` + `market_data.get_fundamentals`) | free | ~1 s, cached 24 h | 20 explained ratios, sector-aware bands, combination playbooks |
+| **Position sizing** (`allocation.py`) | free | instant | Suggested weight per name — risk parity × conviction, with concentration caps |
 | **Agentic AI** (`agents/`) | free tier (Gemini, Groq fallback) | minutes | On-demand: per-stock news digest + prediction; daily top-20 screener |
 | **Factor maths** (`gold_factors.py`, `gold_scenarios.py`) | free | seconds | Gold ETF decomposition, return attribution, scenario projection — deterministic, no AI |
 | **News discovery** (`gold_news.py`) | free | ~2 s | RSS sweep across nine gold factor buckets; deliberately quota-free |
@@ -180,7 +188,7 @@ ranks those 30 — AI judgment where it adds value, arithmetic in code.
 
 All overridable via `ANALYST_MODEL` / `SCREENER_MODEL` / `CHAT_MODEL` / `GOLD_WATCH_MODEL` / `GROQ_MODEL` in `backend/.env`.
 
-## 3a. Fundamental metrics
+## 4. Fundamental metrics
 
 The portfolio table and the rules engine were entirely **technical** — price
 versus moving averages, momentum, RSI, analyst consensus. That answers "what is
@@ -242,7 +250,7 @@ would move every badge in the portfolio without anyone asking for it. The
 fundamental factors are computed and returned (`factors`), ready to blend if that
 is ever wanted.
 
-## 3a2. Suggested position sizing
+## 5. Suggested position sizing
 
 A BUY badge says *whether*, not *how much* — and position sizing is where the
 larger mistakes are made. `app/allocation.py` adds a **Suggested** column to both
@@ -288,7 +296,7 @@ The model has no knowledge of income, age, horizon, tax position, existing asset
 or cash needs, so it is a mechanical output of stated inputs rather than personal
 advice — `per_symbol[sym].reason` returns the arithmetic behind every number.
 
-## 3b. Auth, chat (RAG), and voice
+## 6. Auth, chat (RAG), and voice
 
 **Authentication (JWT).** `POST /api/auth/login` checks credentials from
 `backend/.env` (`AUTH_USERNAME`/`AUTH_PASSWORD`) and issues a 24-hour HS256 JWT;
@@ -336,7 +344,7 @@ says so and points you at generating the analysis first.
 (`SpeechRecognition`, `en-IN`) — speech is transcribed client-side in Chrome and
 sent as a normal chat message. No audio ever reaches the backend.
 
-## 3c. The Gold Watch agent
+## 7. The Gold Watch agent
 
 A gold ETF has no earnings, no management and no order book, so the Analyst
 Agent's whole research strategy — tool-call the technicals, search for company
@@ -442,6 +450,10 @@ An on-demand agent has a human error detector: someone clicked, someone is
 waiting, and a wrong answer is seen. The Gold Watch has none, so its output is
 checked mechanically before it reaches anyone.
 
+The layer lives in `agents/gold_guardrails.py` (pure functions over data, so the
+adversarial suite exercises it with no network, no model and no mocks) with the
+shared disclaimer and advice scanner in `safety.py`.
+
 The governing rule is **flag, don't drop**. A violation adds trust metadata and
 a recorded reason; it never deletes the model's work, because silently shrinking
 a report is how a monitor lies to you. The single exception is an unverifiable
@@ -501,7 +513,7 @@ disagree with an input and you can see exactly what it does to the output. A
 ±1σ cone at realised volatility is drawn alongside, and it is wider than the
 spread between the scenarios, which is the honest headline.
 
-## 4. Data model (SQLite)
+## 8. Data model (SQLite)
 
 | Table | Key | Contents |
 |---|---|---|
@@ -523,11 +535,13 @@ In-process caches (not persisted): price history 10 min, analyst consensus 24 h.
 content hash the key means a duplicate insert is a no-op by construction rather
 than by a query — dedupe cannot be forgotten at a call site.
 
-## 5. API surface
+## 9. API surface
 
 | Endpoint | Behavior |
 |---|---|
+| `GET /api/health` | Liveness check — public, no auth |
 | `GET /api/watchlist` | Full table (prices, returns, status, advice, suggested weight) + basket `allocation` block |
+| `GET /api/stocks/{symbol}/summary` | Metrics + explainable advice for any NSE symbol, in or out of the watchlist |
 | `POST /api/watchlist` / `DELETE /api/watchlist/{symbol}` | Add / remove a share |
 | `GET /api/search?q=` | NSE symbol lookup for the add dialog |
 | `GET /api/stocks/{symbol}/history?period=` | Chart series (1w/1m/1y/5y) |
@@ -536,6 +550,7 @@ than by a query — dedupe cannot be forgotten at a call site.
 | `GET /api/stocks/fundamentals/guide` | The metric catalogue and combination playbooks as a standalone reference |
 | `GET /api/picks[?refresh=true]` | Cached / fresh top-20 |
 | `POST /api/auth/login` | Credentials → JWT (the only public endpoint besides health) |
+| `GET /api/documents` · `POST /api/documents` · `DELETE /api/documents/{name}` | List, upload and remove RAG source files |
 | `POST /api/chat` | RAG-grounded chat: `{message, history}` → `{reply, sources, provider, retrieval_mode}`; every turn logged to `chat_log` |
 | `GET /api/stocks/{symbol}/holders[?refresh=true]` | Major shareholders: AI grounded lookup (30-day cache, circuit breaker) with Yahoo structural/named fallback |
 | `GET /api/metrics` | RAG corpus health, cache state, chat quality (provider/fallback rates, similarity, latency), latest eval results, gold-watch stats + email config state |
@@ -551,7 +566,7 @@ than by a query — dedupe cannot be forgotten at a call site.
 | `GET /api/gold/violations[?kind=&limit=]` | Guardrail audit trail — what the agent got wrong, and how often |
 | `GET /api/gold/eval` | Latest `eval_gold.py` results |
 
-## 6. Cost, resilience, security
+## 10. Cost, resilience, security
 
 - **AI spend is bounded by design:** per-day caching, the free pre-screen, a
   cheaper model for the bulk task, low reasoning effort where quality allows,
@@ -559,7 +574,7 @@ than by a query — dedupe cannot be forgotten at a call site.
 - **Yahoo fragility is contained:** every Yahoo call lives in `market_data.py`
   behind caches; if yfinance breaks, only that module changes.
 - **Model output is not trusted by default.** Every field the Gold Watch emits is
-  checked before use (§3c) — enums because the Groq fallback does not enforce
+  checked before use (§7) — enums because the Groq fallback does not enforce
   schemas, provenance because a plausible URL is not a real one, and prose
   because a system prompt saying "not financial advice" is a request, not a
   guarantee. `app/safety.py` holds the one disclaimer string and the advice
@@ -572,7 +587,7 @@ than by a query — dedupe cannot be forgotten at a call site.
   repo. `.env.example` ships **no working password** — the auth gate refuses the
   old example value by name so a verbatim copy fails loudly.
 - **Auth fails closed.** Startup aborts on a missing or example `AUTH_PASSWORD`
-  (§3b). Rotating `AUTH_PASSWORD` should be paired with deleting
+  (§6). Rotating `AUTH_PASSWORD` should be paired with deleting
   `jwt_secret.key`: tokens signed with the old secret stay valid for 24 h, so a
   password change alone does not end existing sessions.
 - **Network exposure is opt-in and one-sided.** `vite.config.js` sets

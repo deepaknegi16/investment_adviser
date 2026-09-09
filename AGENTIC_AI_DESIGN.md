@@ -77,6 +77,15 @@ status colors, the gold factor decomposition and its scenario projection) is
 computed in Python for free in milliseconds; the model is spent only where actual
 judgment is needed.
 
+Two later additions sit entirely on the arithmetic side of that line and are
+documented in DESIGN.md rather than here, because no model is involved in either:
+`fundamentals.py` (20 ratios with sector-aware interpretation bands) and
+`allocation.py` (risk-parity position sizing). They are worth naming in this doc
+only as evidence for the rule — the temptation with both was to ask a model to
+"judge whether this stock looks cheap" or "suggest a portfolio weight", and both
+are arithmetic over published numbers that a model would only make less
+reproducible and more expensive.
+
 The Gold Watch adds a second rule the others did not need: **retrieval in code,
 relevance in the model.** The Analyst may go blind on news when the search quota
 runs out — it is on-demand, and a user watching a spinner learns something is
