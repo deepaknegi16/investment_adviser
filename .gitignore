@@ -3,6 +3,9 @@ __pycache__/
 backend/.venv/
 backend/.env
 backend/adviser.db
+# WAL mode creates these two siblings; they are runtime state, not source.
+backend/adviser.db-wal
+backend/adviser.db-shm
 backend/jwt_secret.key
 frontend/node_modules/
 frontend/dist/
