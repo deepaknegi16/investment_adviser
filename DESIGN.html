@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="High-level design of the NSE portfolio adviser.">
+<title>Stock Adviser Blueprint</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+:root{
+  --paper:#FBFAF7; --surface:#FFFFFF; --sunken:#F3F2ED;
+  --line:#E1DFD7; --line-soft:#EDEBE4;
+  --ink:#16191C; --ink-2:#414850; --muted:#7A828B; --faint:#A6ACB2;
+  --free:#2F6F62; --metered:#B0741C; --external:#3A5C99; --flag:#9B2B3B;
+  --free-bg:rgba(47,111,98,.10); --metered-bg:rgba(176,116,28,.12);
+  --external-bg:rgba(58,92,153,.10); --flag-bg:rgba(155,43,59,.10);
+  --shadow:0 1px 2px rgba(22,25,28,.04), 0 10px 30px -22px rgba(22,25,28,.35);
+  --sans:'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;
+  --serif:'IBM Plex Serif',Georgia,'Times New Roman',serif;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#121416; --surface:#1A1D20; --sunken:#212528;
+  --line:#2F3438; --line-soft:#25292C;
+  --ink:#ECEEF0; --ink-2:#C6CBD0; --muted:#8B939B; --faint:#666E75;
+  --free:#5FB3A1; --metered:#D9A24A; --external:#7FA3E0; --flag:#D8737F;
+  --free-bg:rgba(95,179,161,.13); --metered-bg:rgba(217,162,74,.14);
+  --external-bg:rgba(127,163,224,.13); --flag-bg:rgba(216,115,127,.13);
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -22px rgba(0,0,0,.9);
+}}
+:root[data-theme="dark"]{
+  --paper:#121416; --surface:#1A1D20; --sunken:#212528;
+  --line:#2F3438; --line-soft:#25292C;
+  --ink:#ECEEF0; --ink-2:#C6CBD0; --muted:#8B939B; --faint:#666E75;
+  --free:#5FB3A1; --metered:#D9A24A; --external:#7FA3E0; --flag:#D8737F;
+  --free-bg:rgba(95,179,161,.13); --metered-bg:rgba(217,162,74,.14);
+  --external-bg:rgba(127,163,224,.13); --flag-bg:rgba(216,115,127,.13);
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -22px rgba(0,0,0,.9);
+}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--serif);
+  font-size:16.5px;line-height:1.68;-webkit-font-smoothing:antialiased;padding:0 22px 96px}
+.wrap{max-width:1060px;margin:0 auto}
+
+h1,h2,h3,h4{font-family:var(--sans);letter-spacing:-.015em;text-wrap:balance}
+h1{font-weight:700;font-size:clamp(32px,5vw,50px);line-height:1.05;margin:12px 0 10px}
+h2{font-weight:600;font-size:clamp(21px,2.7vw,28px);line-height:1.2;margin:0 0 6px}
+h3{font-weight:600;font-size:17px;margin:0 0 4px}
+h4{font-weight:600;font-size:14px;margin:0 0 3px}
+p{margin:0 0 15px;max-width:68ch}
+a{color:inherit;text-decoration:none;border-bottom:1px solid var(--line)}
+a:hover{border-bottom-color:var(--metered)}
+:focus-visible{outline:2px solid var(--metered);outline-offset:3px;border-radius:2px}
+code,.mono{font-family:var(--mono);font-size:.88em}
+code{background:var(--sunken);padding:.1em .35em;border-radius:3px}
+.eyebrow{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted)}
+
+header{padding:56px 0 30px;border-bottom:1px solid var(--line)}
+.lede{font-size:19.5px;line-height:1.55;color:var(--ink-2);max-width:62ch;margin-top:16px}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:1px;
+  background:var(--line);border:1px solid var(--line);border-radius:5px;overflow:hidden;margin-top:28px}
+.fact{background:var(--surface);padding:13px 15px}
+.fact .n{font-family:var(--sans);font-weight:600;font-size:23px;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums}
+.fact .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--muted);margin-top:2px}
+
+section{padding:52px 0;border-bottom:1px solid var(--line-soft)}
+section:last-of-type{border-bottom:none}
+.sec-head{margin-bottom:24px}
+.sec-head .eyebrow{display:block;margin-bottom:9px}
+
+figure{margin:8px 0 22px;background:var(--surface);border:1px solid var(--line);
+  border-radius:6px;padding:22px 20px 14px;box-shadow:var(--shadow);overflow-x:auto}
+figure svg{display:block;width:100%;height:auto;min-width:520px;color:var(--ink)}
+figcaption{font-family:var(--mono);font-size:11.5px;line-height:1.6;color:var(--muted);
+  margin-top:14px;padding-top:12px;border-top:1px solid var(--line-soft)}
+
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin:0 0 18px;font-family:var(--mono);font-size:11.5px}
+.legend span{display:inline-flex;align-items:center;gap:7px;color:var(--ink-2)}
+.legend i{width:11px;height:11px;border-radius:2px;flex:none}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(248px,1fr));gap:14px;margin-top:18px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:5px;padding:16px 17px}
+.card .rail{width:24px;height:2px;border-radius:1px;margin-bottom:11px}
+.card p{font-size:14.5px;line-height:1.56;color:var(--ink-2);margin:6px 0 0;max-width:none}
+.card .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--muted);display:block;margin-bottom:2px}
+
+.tbl{overflow-x:auto;margin-top:16px}
+table{border-collapse:collapse;width:100%;min-width:540px;font-size:14px}
+th{font-family:var(--mono);text-align:left;font-weight:500;font-size:10.5px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--muted);padding:0 12px 9px;border-bottom:1px solid var(--line)}
+td{padding:10px 12px;border-bottom:1px solid var(--line-soft);color:var(--ink-2);
+  vertical-align:top;line-height:1.5}
+tr:last-child td{border-bottom:none}
+td b{color:var(--ink);font-weight:600}
+td.mono,th.num,td.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+td.num,th.num{text-align:right}
+
+.note{border-left:2px solid var(--metered);padding:3px 0 3px 16px;margin:22px 0;max-width:68ch}
+.note p{font-size:15.5px;color:var(--ink-2);margin-bottom:0}
+.note p+p{margin-top:10px}
+
+.chip{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.07em;
+  text-transform:uppercase;padding:2px 7px;border-radius:3px;white-space:nowrap}
+.chip.free{background:var(--free-bg);color:var(--free)}
+.chip.metered{background:var(--metered-bg);color:var(--metered)}
+.chip.flag{background:var(--flag-bg);color:var(--flag)}
+
+.eq{background:var(--surface);border:1px solid var(--line);border-radius:5px;
+  padding:20px;margin:6px 0 18px;overflow-x:auto;box-shadow:var(--shadow)}
+.eq-line{display:flex;align-items:center;justify-content:center;gap:11px;min-width:min-content;
+  font-family:var(--mono);font-size:14px;white-space:nowrap}
+.eq-term{text-align:center;padding:7px 12px;border-radius:4px}
+.eq-term .lab{display:block;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:3px}
+.eq-term .val{display:block;font-weight:600;font-size:15px}
+.eq-op{color:var(--faint);font-size:16px}
+
+.findings{display:grid;gap:12px;margin-top:18px}
+.finding{background:var(--sunken);border:1px solid var(--line);border-radius:5px;padding:15px 17px}
+.finding h4{color:var(--ink)}
+.finding p{font-size:14.5px;color:var(--ink-2);margin:5px 0 0;max-width:none}
+.finding .num{font-family:var(--mono);font-weight:600;color:var(--flag)}
+.finding .fix{font-family:var(--mono);font-weight:600;color:var(--free)}
+
+footer{padding:36px 0 0;border-top:1px solid var(--line);margin-top:26px;
+  font-family:var(--mono);font-size:11.5px;line-height:1.75;color:var(--muted)}
+footer p{max-width:none;margin-bottom:9px}
+
+@media (max-width:640px){
+  body{padding:0 16px 64px;font-size:16px}
+  figure{padding:16px 12px 10px}
+  .eq-line{font-size:12px;gap:7px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">High-level design &nbsp;·&nbsp; NSE portfolio adviser</div>
+  <h1>Stock Adviser Blueprint</h1>
+  <p class="lede">A single-user dashboard for Indian equities that puts a hard boundary between
+  arithmetic and judgment: everything computable is computed in Python for free in milliseconds,
+  and the model is spent only where a human would actually have to think.</p>
+  <div class="facts">
+    <div class="fact"><div class="n">30</div><div class="k">API routes</div></div>
+    <div class="fact"><div class="n">12</div><div class="k">SQLite tables</div></div>
+    <div class="fact"><div class="n">3</div><div class="k">AI agents</div></div>
+    <div class="fact"><div class="n">6.1k</div><div class="k">backend LOC</div></div>
+    <div class="fact"><div class="n">₹0</div><div class="k">running cost</div></div>
+  </div>
+</header>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">01 — the organising principle</span>
+    <h2>Nothing fast waits on anything slow</h2>
+  </div>
+
+  <div class="legend">
+    <span><i style="background:var(--free)"></i>free &amp; deterministic</span>
+    <span><i style="background:var(--metered)"></i>metered AI (free tier, quota'd)</span>
+    <span><i style="background:var(--external)"></i>third-party</span>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 880 300" role="img" aria-label="Three independent request lanes: the portfolio table answers in seconds from Yahoo data alone, AI panels take minutes but only on click and are cached per day, and the gold watch runs unattended on cron and emails only when news clears a materiality bar.">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <!-- time axis -->
+      <text x="150" y="20" class="mono" font-size="10.5" fill="var(--muted)" font-family="monospace" letter-spacing="1">MILLISECONDS</text>
+      <text x="410" y="20" class="mono" font-size="10.5" fill="var(--muted)" font-family="monospace" letter-spacing="1">SECONDS</text>
+      <text x="650" y="20" class="mono" font-size="10.5" fill="var(--muted)" font-family="monospace" letter-spacing="1">MINUTES</text>
+      <line x1="150" y1="28" x2="860" y2="28" stroke="var(--line)" stroke-width="1" marker-end="url(#ar)" color="var(--faint)"/>
+
+      <!-- lane 1 -->
+      <text x="0" y="62" font-family="monospace" font-size="11" font-weight="600" fill="currentColor">PORTFOLIO TABLE</text>
+      <text x="0" y="77" font-family="monospace" font-size="10" fill="var(--muted)">polls every 60s</text>
+      <rect x="150" y="46" width="196" height="34" rx="4" fill="var(--free-bg)" stroke="var(--free)" stroke-width="1.5"/>
+      <text x="248" y="67" text-anchor="middle" font-family="monospace" font-size="11" fill="var(--free)">prices · returns · advice</text>
+      <line x1="346" y1="63" x2="404" y2="63" stroke="var(--external)" stroke-width="1.5" marker-end="url(#ar)" color="var(--external)"/>
+      <text x="375" y="57" text-anchor="middle" font-family="monospace" font-size="9.5" fill="var(--external)">cached 10m</text>
+      <rect x="404" y="46" width="112" height="34" rx="4" fill="var(--external-bg)" stroke="var(--external)" stroke-width="1.5"/>
+      <text x="460" y="67" text-anchor="middle" font-family="monospace" font-size="11.5" fill="var(--external)">Yahoo Finance</text>
+
+      <!-- lane 2 -->
+      <text x="0" y="140" font-family="monospace" font-size="11" font-weight="600" fill="currentColor">AI PANELS</text>
+      <text x="0" y="155" font-family="monospace" font-size="10" fill="var(--muted)">on click only</text>
+      <rect x="150" y="124" width="130" height="34" rx="4" fill="var(--free-bg)" stroke="var(--free)" stroke-width="1.5"/>
+      <text x="215" y="145" text-anchor="middle" font-family="monospace" font-size="11.5" fill="var(--free)">cache hit?</text>
+      <line x1="280" y1="141" x2="338" y2="141" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)"/>
+      <text x="309" y="135" text-anchor="middle" font-family="monospace" font-size="9.5" fill="var(--muted)">miss</text>
+      <rect x="338" y="124" width="240" height="34" rx="4" fill="var(--metered-bg)" stroke="var(--metered)" stroke-width="1.5"/>
+      <text x="458" y="145" text-anchor="middle" font-family="monospace" font-size="11.5" fill="var(--metered)">agent: tools → news → JSON</text>
+      <line x1="578" y1="141" x2="636" y2="141" stroke="var(--metered)" stroke-width="1.5" marker-end="url(#ar)" color="var(--metered)"/>
+      <rect x="636" y="124" width="130" height="34" rx="4" fill="var(--metered-bg)" stroke="var(--metered)" stroke-width="1.5"/>
+      <text x="701" y="145" text-anchor="middle" font-family="monospace" font-size="11.5" fill="var(--metered)">Gemini / Groq</text>
+      <path d="M 458 158 L 458 176 L 215 176 L 215 162" fill="none" stroke="var(--free)" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ar)" color="var(--free)"/>
+      <text x="336" y="190" text-anchor="middle" font-family="monospace" font-size="9.5" fill="var(--free)">cached per day — next open is instant</text>
+
+      <!-- lane 3 -->
+      <text x="0" y="240" font-family="monospace" font-size="11" font-weight="600" fill="currentColor">GOLD WATCH</text>
+      <text x="0" y="255" font-family="monospace" font-size="10" fill="var(--muted)">cron, unattended</text>
+      <rect x="150" y="224" width="150" height="34" rx="4" fill="var(--free-bg)" stroke="var(--free)" stroke-width="1.5"/>
+      <text x="225" y="245" text-anchor="middle" font-family="monospace" font-size="11.5" fill="var(--free)">RSS · 9 buckets</text>
+      <line x1="300" y1="241" x2="352" y2="241" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)"/>
+      <rect x="352" y="224" width="140" height="34" rx="4" fill="var(--metered-bg)" stroke="var(--metered)" stroke-width="1.5"/>
+      <text x="422" y="245" text-anchor="middle" font-family="monospace" font-size="11.5" fill="var(--metered)">tag &amp; score</text>
+      <line x1="492" y1="241" x2="544" y2="241" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)"/>
+      <rect x="544" y="224" width="150" height="34" rx="4" fill="none" stroke="var(--flag)" stroke-width="1.5"/>
+      <text x="619" y="245" text-anchor="middle" font-family="monospace" font-size="11.5" fill="var(--flag)">materiality bar</text>
+      <line x1="694" y1="241" x2="738" y2="241" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)"/>
+      <text x="876" y="245" text-anchor="end" font-family="monospace" font-size="11.5" fill="currentColor">email — or silence</text>
+    </svg>
+    <figcaption>Three lanes that never block each other. The table is usable before any model has
+    run; the agents cache per day so a second visit costs nothing; the watcher runs with nobody
+    looking and stays quiet unless the news clears a bar.</figcaption>
+  </figure>
+
+  <p>The rule that produced this shape is <b>arithmetic in code, judgment in the model</b>. Returns,
+  moving averages, RSI, screening scores, factor decomposition and position sizing are all
+  deterministic, so they are Python — free, instant, and identical every run. The model is spent
+  only where a person would genuinely have to weigh something: what a news item means, which twenty
+  names out of a hundred deserve a look, how to phrase an outlook.</p>
+
+  <p>The corollary matters more than the rule: because the deterministic layer never calls a model,
+  <b>the whole dashboard still works with no API key at all</b>. AI panels degrade to a stated
+  reason; nothing else notices.</p>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">02 — architecture</span>
+    <h2>One process, one file, no services</h2>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 880 400" role="img" aria-label="A React SPA talks to a FastAPI backend over JWT-authenticated routes. Deterministic services handle market data, fundamentals, conviction scoring and allocation; a shared agent runner drives three agents against Gemini with a Groq fallback; SQLite holds the watchlist and every cached result.">
+      <defs>
+        <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <!-- browser -->
+      <rect x="0" y="14" width="180" height="66" rx="5" fill="var(--surface)" stroke="currentColor" stroke-width="1.5"/>
+      <text x="90" y="40" text-anchor="middle" font-family="monospace" font-size="12" font-weight="600" fill="currentColor">React SPA</text>
+      <text x="90" y="58" text-anchor="middle" font-family="monospace" font-size="10" fill="var(--muted)">Vite · 12 components</text>
+      <text x="90" y="72" text-anchor="middle" font-family="monospace" font-size="10" fill="var(--muted)">token in localStorage</text>
+
+      <line x1="180" y1="47" x2="248" y2="47" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar2)"/>
+      <text x="214" y="40" text-anchor="middle" font-family="monospace" font-size="9.5" fill="var(--muted)">JWT</text>
+
+      <!-- api -->
+      <rect x="248" y="14" width="180" height="66" rx="5" fill="var(--surface)" stroke="currentColor" stroke-width="1.5"/>
+      <text x="338" y="40" text-anchor="middle" font-family="monospace" font-size="12" font-weight="600" fill="currentColor">FastAPI</text>
+      <text x="338" y="58" text-anchor="middle" font-family="monospace" font-size="10" fill="var(--muted)">30 routes · 8 routers</text>
+      <text x="338" y="72" text-anchor="middle" font-family="monospace" font-size="10" fill="var(--flag)">refuses to boot w/o password</text>
+
+      <!-- deterministic column -->
+      <rect x="0" y="120" width="404" height="150" rx="5" fill="var(--free-bg)" stroke="var(--free)" stroke-width="1.5"/>
+      <text x="14" y="140" font-family="monospace" font-size="10.5" font-weight="600" fill="var(--free)" letter-spacing="1">DETERMINISTIC · FREE · INSTANT</text>
+      <rect x="14" y="150" width="120" height="42" rx="4" fill="var(--surface)" stroke="var(--free)" stroke-width="1"/>
+      <text x="74" y="168" text-anchor="middle" font-family="monospace" font-size="10.5" fill="currentColor">market_data</text>
+      <text x="74" y="182" text-anchor="middle" font-family="monospace" font-size="9" fill="var(--muted)">caches · beta · liq</text>
+      <rect x="142" y="150" width="120" height="42" rx="4" fill="var(--surface)" stroke="var(--free)" stroke-width="1"/>
+      <text x="202" y="168" text-anchor="middle" font-family="monospace" font-size="10.5" fill="currentColor">fundamentals</text>
+      <text x="202" y="182" text-anchor="middle" font-family="monospace" font-size="9" fill="var(--muted)">20 ratios, playbooks</text>
+      <rect x="270" y="150" width="120" height="42" rx="4" fill="var(--surface)" stroke="var(--free)" stroke-width="1"/>
+      <text x="330" y="168" text-anchor="middle" font-family="monospace" font-size="10.5" fill="currentColor">gold_factors</text>
+      <text x="330" y="182" text-anchor="middle" font-family="monospace" font-size="9" fill="var(--muted)">k decomposition</text>
+      <rect x="14" y="202" width="120" height="42" rx="4" fill="var(--surface)" stroke="var(--free)" stroke-width="1"/>
+      <text x="74" y="220" text-anchor="middle" font-family="monospace" font-size="10.5" fill="currentColor">conviction</text>
+      <text x="74" y="234" text-anchor="middle" font-family="monospace" font-size="9" fill="var(--muted)">factor ranks</text>
+      <rect x="142" y="202" width="120" height="42" rx="4" fill="var(--surface)" stroke="var(--free)" stroke-width="1"/>
+      <text x="202" y="220" text-anchor="middle" font-family="monospace" font-size="10.5" fill="currentColor">allocation</text>
+      <text x="202" y="234" text-anchor="middle" font-family="monospace" font-size="9" fill="var(--muted)">risk parity + caps</text>
+      <rect x="270" y="202" width="120" height="42" rx="4" fill="var(--surface)" stroke="var(--free)" stroke-width="1"/>
+      <text x="330" y="220" text-anchor="middle" font-family="monospace" font-size="10.5" fill="currentColor">smallcap</text>
+      <text x="330" y="234" text-anchor="middle" font-family="monospace" font-size="9" fill="var(--muted)">gates, 140 names</text>
+
+      <!-- agent column -->
+      <rect x="440" y="120" width="290" height="150" rx="5" fill="var(--metered-bg)" stroke="var(--metered)" stroke-width="1.5"/>
+      <text x="454" y="140" font-family="monospace" font-size="10.5" font-weight="600" fill="var(--metered)" letter-spacing="1">METERED · ON DEMAND</text>
+      <rect x="454" y="150" width="262" height="34" rx="4" fill="var(--surface)" stroke="var(--metered)" stroke-width="1"/>
+      <text x="585" y="171" text-anchor="middle" font-family="monospace" font-size="10.5" fill="currentColor">runner — 3 primitives + retry ladder</text>
+      <rect x="454" y="192" width="82" height="34" rx="4" fill="var(--surface)" stroke="var(--metered)" stroke-width="1"/>
+      <text x="495" y="213" text-anchor="middle" font-family="monospace" font-size="10" fill="currentColor">Analyst</text>
+      <rect x="544" y="192" width="82" height="34" rx="4" fill="var(--surface)" stroke="var(--metered)" stroke-width="1"/>
+      <text x="585" y="213" text-anchor="middle" font-family="monospace" font-size="10" fill="currentColor">Screener</text>
+      <rect x="634" y="192" width="82" height="34" rx="4" fill="var(--surface)" stroke="var(--metered)" stroke-width="1"/>
+      <text x="675" y="213" text-anchor="middle" font-family="monospace" font-size="10" fill="currentColor">Gold</text>
+      <rect x="454" y="234" width="262" height="26" rx="4" fill="none" stroke="var(--flag)" stroke-width="1.2"/>
+      <text x="585" y="251" text-anchor="middle" font-family="monospace" font-size="10" fill="var(--flag)">guardrails — provenance, enums, advice</text>
+
+      <line x1="338" y1="80" x2="338" y2="114" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar2)"/>
+      <line x1="428" y1="47" x2="560" y2="47" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="560" y1="47" x2="560" y2="114" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar2)"/>
+
+      <!-- externals -->
+      <rect x="758" y="120" width="122" height="42" rx="4" fill="var(--external-bg)" stroke="var(--external)" stroke-width="1.5"/>
+      <text x="819" y="146" text-anchor="middle" font-family="monospace" font-size="10.5" fill="var(--external)">Yahoo Finance</text>
+      <rect x="758" y="172" width="122" height="42" rx="4" fill="var(--external-bg)" stroke="var(--external)" stroke-width="1.5"/>
+      <text x="819" y="192" text-anchor="middle" font-family="monospace" font-size="10.5" fill="var(--external)">Gemini</text>
+      <text x="819" y="206" text-anchor="middle" font-family="monospace" font-size="9" fill="var(--external)">Groq fallback</text>
+      <rect x="758" y="224" width="122" height="42" rx="4" fill="var(--external-bg)" stroke="var(--external)" stroke-width="1.5"/>
+      <text x="819" y="244" text-anchor="middle" font-family="monospace" font-size="10.5" fill="var(--external)">News RSS</text>
+      <text x="819" y="258" text-anchor="middle" font-family="monospace" font-size="9" fill="var(--external)">unmetered</text>
+
+      <path d="M 404 132 L 420 132 L 420 100 L 819 100 L 819 114" fill="none" stroke="var(--external)" stroke-width="1.2" marker-end="url(#ar2)" color="var(--external)"/>
+      <text x="620" y="94" text-anchor="middle" font-family="monospace" font-size="9.5" fill="var(--external)">prices · fundamentals · liquidity</text>
+      <line x1="730" y1="190" x2="752" y2="190" stroke="var(--external)" stroke-width="1.2" marker-end="url(#ar2)" color="var(--external)"/>
+      <line x1="730" y1="215" x2="752" y2="240" stroke="var(--external)" stroke-width="1.2" marker-end="url(#ar2)" color="var(--external)"/>
+
+      <!-- storage -->
+      <rect x="248" y="310" width="384" height="52" rx="5" fill="var(--sunken)" stroke="currentColor" stroke-width="1.5"/>
+      <text x="440" y="332" text-anchor="middle" font-family="monospace" font-size="11.5" font-weight="600" fill="currentColor">SQLite — adviser.db</text>
+      <text x="440" y="350" text-anchor="middle" font-family="monospace" font-size="9.5" fill="var(--muted)">watchlist · every cached result · RAG chunks · audit trails</text>
+      <line x1="202" y1="244" x2="300" y2="304" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar2)"/>
+      <line x1="585" y1="260" x2="520" y2="304" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar2)"/>
+      <text x="440" y="382" text-anchor="middle" font-family="monospace" font-size="9.5" fill="var(--muted)">one file · no migrations tool · idempotent ALTERs on startup</text>
+    </svg>
+    <figcaption>The whole backend is one uvicorn process and one SQLite file. The vertical split is
+    the load-bearing part: everything on the left runs without a key, everything on the right is
+    optional and cached.</figcaption>
+  </figure>
+
+  <p>There is no message queue, no Redis, no vector database and no container. For one user with a
+  watchlist of thirteen names, each of those would be infrastructure to operate rather than a
+  problem solved — the RAG corpus is small enough that a NumPy cosine scan over SQLite rows is
+  instant, and the caches that matter are in-process dictionaries with TTLs.</p>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">03 — the agents</span>
+    <h2>Three agents, one runner</h2>
+  </div>
+
+  <p>Gemini will not accept search grounding, custom function tools and strict JSON output in a
+  single request, so an agent run is an explicit pipeline rather than one call. All three agents
+  compose the same three primitives in <code>runner.py</code>, which also owns the retry ladder and
+  the Groq fallback.</p>
+
+  <div class="grid">
+    <div class="card">
+      <div class="rail" style="background:var(--metered)"></div>
+      <span class="tag">on click · cached per day</span>
+      <h3>Analyst</h3>
+      <p>Tool loop over market data, then a search-grounded news pass, then schema-constrained
+      synthesis. Produces a sourced news digest, a short and long-term outlook, and a call.
+      Pinned to Gemini: its citations <em>are</em> the model's output, so a Groq fallback would
+      silently drop them.</p>
+    </div>
+    <div class="card">
+      <div class="rail" style="background:var(--metered)"></div>
+      <span class="tag">daily · hybrid</span>
+      <h3>Screener</h3>
+      <p>A free deterministic momentum pre-screen cuts ~110 Nifty names to 30; the model only ranks
+      those 30. AI judgment where it adds value, arithmetic in code everywhere else — the pattern
+      the whole app is built on, made explicit.</p>
+    </div>
+    <div class="card">
+      <div class="rail" style="background:var(--flag)"></div>
+      <span class="tag">cron · unattended</span>
+      <h3>Gold Watch</h3>
+      <p>The only agent that runs with nobody watching, so it is the only one with guardrails and an
+      eval suite. Discovery is RSS rather than AI, which is what lets it keep working after the
+      daily search quota is gone.</p>
+    </div>
+  </div>
+
+  <div class="note">
+    <p><b>Why the third agent exists at all.</b> A gold ETF has no earnings, no management and no
+    order book, so the Analyst's entire strategy — call the technicals, search for company news,
+    judge valuation — has nothing to bite on. GOLDBEES needed a different question asked.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">04 — the gold chain</span>
+    <h2>Which link moved?</h2>
+  </div>
+
+  <div class="eq">
+    <div class="eq-line">
+      <span class="eq-term" style="background:var(--sunken)"><span class="lab">GOLDBEES</span><span class="val">₹125.84</span></span>
+      <span class="eq-op">=</span>
+      <span class="eq-term" style="background:var(--free-bg);color:var(--free)"><span class="lab">k</span><span class="val">0.00929</span></span>
+      <span class="eq-op">×</span>
+      <span class="eq-term" style="background:var(--metered-bg);color:var(--metered)"><span class="lab">gold $/oz</span><span class="val">4,440</span></span>
+      <span class="eq-op">×</span>
+      <span class="eq-term" style="background:var(--external-bg);color:var(--external)"><span class="lab">USDINR</span><span class="val">94.82</span></span>
+      <span class="eq-op">÷</span>
+      <span class="eq-term" style="background:var(--sunken)"><span class="lab">g / troy oz</span><span class="val">31.1035</span></span>
+    </div>
+  </div>
+
+  <p>A rupee-denominated gold ETF is three independent drivers multiplied together, and only one of
+  them is gold. <b>k</b> is the grams backing one unit times the Indian domestic premium — import
+  duty, local scarcity, fund expense. Tracking it separately is what lets the agent tell three
+  things apart that look identical on a price chart.</p>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>If this moved…</th><th>…the leg is</th><th>What to watch</th></tr></thead>
+      <tbody>
+        <tr><td><b>Gold rallied in dollars</b></td><td class="mono">gold_usd</td><td>Fed, real yields, central banks, geopolitics</td></tr>
+        <tr><td><b>The rupee weakened</b></td><td class="mono">USDINR</td><td>RBI, oil, current account, FII flows</td></tr>
+        <tr><td><b>Delhi changed the import duty</b></td><td class="mono">k</td><td>Budget, customs notifications, CBIC</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <p>The decomposition is testable, and it tested true. <b>k</b> steps <span class="mono">+8.3%</span>
+    across April–June 2026, matching India's import-duty rise from 6% to 15% in May. Over 2026 to
+    date the ETF gained ~13% while dollar gold was flat — the entire move was the rupee and the
+    duty. An agent watching only "gold news" would have explained none of the year's actual return.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">05 — position sizing</span>
+    <h2>How much, not just whether</h2>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 880 250" role="img" aria-label="Sizing pipeline: five weighted factors produce a cross-sectional conviction score, which is divided by volatility for equal risk contribution, then passed through single-name and sector caps applied in an alternating loop, with the undeployed remainder shown as cash.">
+      <defs>
+        <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <text x="0" y="16" font-family="monospace" font-size="10" fill="var(--muted)" letter-spacing="1">WEIGHTED FACTORS</text>
+      <rect x="0" y="26" width="168" height="26" rx="3" fill="var(--free-bg)" stroke="var(--free)" stroke-width="1"/>
+      <text x="10" y="43" font-family="monospace" font-size="10.5" fill="currentColor">momentum 12m ex-1m</text>
+      <text x="158" y="43" text-anchor="end" font-family="monospace" font-size="10.5" font-weight="600" fill="var(--free)">25%</text>
+      <rect x="0" y="56" width="168" height="26" rx="3" fill="var(--free-bg)" stroke="var(--free)" stroke-width="1"/>
+      <text x="10" y="73" font-family="monospace" font-size="10.5" fill="currentColor">quality</text>
+      <text x="158" y="73" text-anchor="end" font-family="monospace" font-size="10.5" font-weight="600" fill="var(--free)">25%</text>
+      <rect x="0" y="86" width="168" height="26" rx="3" fill="var(--free-bg)" stroke="var(--free)" stroke-width="1"/>
+      <text x="10" y="103" font-family="monospace" font-size="10.5" fill="currentColor">value</text>
+      <text x="158" y="103" text-anchor="end" font-family="monospace" font-size="10.5" font-weight="600" fill="var(--free)">25%</text>
+      <rect x="0" y="116" width="168" height="26" rx="3" fill="var(--free-bg)" stroke="var(--free)" stroke-width="1"/>
+      <text x="10" y="133" font-family="monospace" font-size="10.5" fill="currentColor">trend vs 200-day</text>
+      <text x="158" y="133" text-anchor="end" font-family="monospace" font-size="10.5" font-weight="600" fill="var(--free)">15%</text>
+      <rect x="0" y="146" width="168" height="26" rx="3" fill="var(--free-bg)" stroke="var(--free)" stroke-width="1"/>
+      <text x="10" y="163" font-family="monospace" font-size="10.5" fill="currentColor">analyst consensus</text>
+      <text x="158" y="163" text-anchor="end" font-family="monospace" font-size="10.5" font-weight="600" fill="var(--free)">10%</text>
+      <text x="0" y="192" font-family="monospace" font-size="9.5" fill="var(--muted)">ranked cross-sectionally</text>
+      <text x="0" y="206" font-family="monospace" font-size="9.5" fill="var(--muted)">within the basket</text>
+
+      <line x1="176" y1="99" x2="228" y2="99" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar3)"/>
+
+      <rect x="228" y="72" width="134" height="54" rx="4" fill="var(--surface)" stroke="currentColor" stroke-width="1.5"/>
+      <text x="295" y="94" text-anchor="middle" font-family="monospace" font-size="11.5" font-weight="600" fill="currentColor">conviction</text>
+      <text x="295" y="111" text-anchor="middle" font-family="monospace" font-size="9.5" fill="var(--muted)">0–1, fund above 0.45</text>
+
+      <line x1="362" y1="99" x2="414" y2="99" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar3)"/>
+      <text x="388" y="92" text-anchor="middle" font-family="monospace" font-size="9.5" fill="var(--muted)">÷ vol</text>
+
+      <rect x="414" y="72" width="150" height="54" rx="4" fill="var(--surface)" stroke="currentColor" stroke-width="1.5"/>
+      <text x="489" y="94" text-anchor="middle" font-family="monospace" font-size="11.5" font-weight="600" fill="currentColor">risk parity</text>
+      <text x="489" y="111" text-anchor="middle" font-family="monospace" font-size="9.5" fill="var(--muted)">equal risk, not equal ₹</text>
+
+      <line x1="564" y1="99" x2="616" y2="99" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar3)"/>
+
+      <rect x="616" y="60" width="150" height="78" rx="4" fill="none" stroke="var(--flag)" stroke-width="1.5"/>
+      <text x="691" y="80" text-anchor="middle" font-family="monospace" font-size="11.5" font-weight="600" fill="var(--flag)">caps</text>
+      <text x="691" y="97" text-anchor="middle" font-family="monospace" font-size="9.5" fill="var(--flag)">15% name · 35% sector</text>
+      <text x="691" y="112" text-anchor="middle" font-family="monospace" font-size="9.5" fill="var(--flag)">drop under 2%</text>
+      <text x="691" y="129" text-anchor="middle" font-family="monospace" font-size="9" fill="var(--muted)">alternating until both hold</text>
+
+      <line x1="766" y1="99" x2="812" y2="99" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar3)"/>
+      <text x="848" y="94" text-anchor="middle" font-family="monospace" font-size="11" font-weight="600" fill="currentColor">weights</text>
+      <text x="848" y="110" text-anchor="middle" font-family="monospace" font-size="10" fill="var(--muted)">+ cash</text>
+
+      <path d="M 691 138 L 691 172 L 295 172 L 295 130" fill="none" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar3)" color="var(--muted)"/>
+      <text x="493" y="187" text-anchor="middle" font-family="monospace" font-size="9.5" fill="var(--muted)">capping frees weight, which can breach the other cap — so they iterate</text>
+    </svg>
+    <figcaption>Weights are a share of one basket spanning holdings and screener candidates, so the
+    same stock gets one number wherever it appears and the columns sum to 100%.</figcaption>
+  </figure>
+
+  <p>Factor weights come from the published cross-sectional literature rather than from what was
+  convenient to compute — momentum, quality and value at 25% each, trend 15%, and analyst consensus
+  cut to 10% because the evidence supports revisions rather than rating levels. One-month momentum
+  is excluded outright: at that horizon the effect reverses.</p>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">06 — the engineering record</span>
+    <h2>What measurement changed</h2>
+  </div>
+
+  <p>Several parts of this design exist because something was measured and found wanting. These are
+  the load-bearing corrections, kept here because the reasoning matters more than the result.</p>
+
+  <div class="findings">
+    <div class="finding">
+      <h4>The first sizing model implied <span class="num">17.4%</span> portfolio turnover per day</h4>
+      <p>Conviction came from step functions — <code>+1 if price &gt; SMA50</code> — so a stock sitting on
+      its average flipped a whole point on noise. At Indian brokerage plus STT, with sub-12-month gains
+      taxed at slab rate, that column was worse than none. Continuous cross-sectional ranks brought it
+      to <span class="fix">2.2%</span>.</p>
+    </div>
+    <div class="finding">
+      <h4>The watcher's first live run found <span class="num">zero</span> events and reported calm</h4>
+      <p>News discovery used Gemini's search grounding, whose free daily quota was already spent.
+      Nothing errored; the output simply looked fine. Discovery moved to <span class="fix">RSS</span> —
+      free and unmetered — and the model was demoted from finding the news to scoring it.</p>
+    </div>
+    <div class="finding">
+      <h4>Yahoo publishes ROE for <span class="num">7%</span> of Indian small caps</h4>
+      <p>The quality gate was rejecting on missing data rather than weak fundamentals. EPS and book
+      value are present for ~100%, and ROE is their ratio, so it is now derived where absent and
+      flagged as such. Coverage went <span class="fix">3/40 → 40/40</span>.</p>
+    </div>
+    <div class="finding">
+      <h4>Parallel batch downloads silently lost <span class="num">113 of 140</span> symbols</h4>
+      <p><code>yf.download</code> already threads internally, so four concurrent chunks stacked
+      concurrency on concurrency and Yahoo answered with empties that looked exactly like ordinary
+      rejections. Serial chunks: <span class="fix">140/140</span>.</p>
+    </div>
+    <div class="finding">
+      <h4>Two tables each summing to 100% implied <span class="num">190%</span> of a portfolio</h4>
+      <p>Holdings and screener picks were sized as independent baskets, so one stock in both lists
+      showed 15% in one and 5% in the other. There is one pot of money, so there is now
+      <span class="fix">one allocation</span> over the union.</p>
+    </div>
+    <div class="finding">
+      <h4>A missing <code>.env</code> silently downgraded auth from locked to <span class="num">open</span></h4>
+      <p><code>AUTH_PASSWORD</code> fell back to a default that <code>.env.example</code> shipped
+      verbatim — and the app kept serving traffic. The startup hook now
+      <span class="fix">refuses to boot</span> without a password, and rejects the published example
+      value by name.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">07 — failure posture</span>
+    <h2>What happens when things break</h2>
+  </div>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>When this fails</th><th>The system…</th><th>Because</th></tr></thead>
+      <tbody>
+        <tr><td><b>No API key</b></td><td>Serves the entire market-data experience; AI panels state the reason</td><td>The deterministic layer never calls a model</td></tr>
+        <tr><td><b>Gemini rate-limited</b></td><td>Hops to a second model's quota, then to Groq where sources allow</td><td>Free-tier quotas are per model</td></tr>
+        <tr><td><b>AI search quota gone</b></td><td>Gold watch is unaffected; Analyst degrades to technicals-only</td><td>Gold discovery is RSS, not AI</td></tr>
+        <tr><td><b>All news feeds dead</b></td><td>Sends a distinct <em>"watcher degraded"</em> email</td><td>Silence must never be unexplained</td></tr>
+        <tr><td><b>SMTP down</b></td><td>Records the error, keeps the research</td><td>Delivery failing must not lose analysis</td></tr>
+        <tr><td><b>Model invents a headline</b></td><td>Keeps the text, strips the link, flags it, counts it</td><td>A URL can't be "marked untrusted" — a reader still clicks</td></tr>
+        <tr><td><b>Yahoo drops a symbol</b></td><td>Retries it alone, then reports it as a data gap, not a rejection</td><td>"No data" and "failed the screen" are different facts</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <p>The pattern across every row: <b>degrade loudly, never silently</b>. The one exception the
+    design fights hardest is a component that fails in a way indistinguishable from working — which
+    is why an unattended watcher that finds nothing has to prove it could still see.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">08 — storage</span>
+    <h2>Twelve tables, one file</h2>
+  </div>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Group</th><th>Tables</th><th>Holds</th></tr></thead>
+      <tbody>
+        <tr><td><b>State</b></td><td class="mono">watchlist</td><td>The only user-owned data in the system</td></tr>
+        <tr><td><b>AI caches</b></td><td class="mono">ai_analysis · ai_picks · ai_holders · smallcap_screen</td><td>Keyed by date, so a repeat view costs nothing</td></tr>
+        <tr><td><b>Retrieval</b></td><td class="mono">rag_chunks</td><td>Flattened research + embeddings for the chat</td></tr>
+        <tr><td><b>Gold watch</b></td><td class="mono">gold_events · gold_watch_runs</td><td>The event id <em>is</em> a content hash — dedupe by construction</td></tr>
+        <tr><td><b>Observability</b></td><td class="mono">chat_log · eval_runs · gold_eval_runs · guardrail_violations</td><td>Every turn, every eval, every guardrail hit</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Four of the twelve tables exist purely to answer "is this working?" — chat quality, RAG eval
+  scores, gold eval verdicts and guardrail violations all surface through a single metrics endpoint.
+  For a system whose outputs are judgments rather than facts, that ratio is deliberate.</p>
+</section>
+
+<footer>
+  <p>Backend: FastAPI · SQLAlchemy · SQLite · yfinance · google-genai, on a free Gemini tier with a
+  Groq fallback. Frontend: React + Vite, no UI framework. Auth: HS256 JWT, single user.</p>
+  <p>Full detail: <code>DESIGN.md</code> (high and low level) · <code>DESIGN_ANALYSIS.md</code>
+  (options considered and why) · <code>AGENTIC_AI_DESIGN.md</code> (the agent layer, part by part).</p>
+  <p>Everything the app outputs is informational research from public sources — not investment
+  advice, not a recommendation, and not personalised to any financial situation.</p>
+</footer>
+
+</div>
+
+</body>
+</html>

@@ -1,5 +1,8 @@
 # Design — Indian Stock Portfolio Adviser
 
+> **Prefer a picture?** `DESIGN.html` in this repo is the same high-level design
+> as a single self-contained page with diagrams — open it in any browser.
+
 A personal dashboard that tracks NSE shares (prices, 1W/1M/1Y/5Y performance,
 trend status, buy/hold/sell advice) and uses **agentic AI** for per-stock news +
 predictions, a top-20 stock screener, and a standing macro-factor watch on gold

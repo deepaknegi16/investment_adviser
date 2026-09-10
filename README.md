@@ -100,6 +100,18 @@ The Vite dev server proxies `/api` to the backend on port 8000.
   are isolated in `backend/app/market_data.py` and cached (prices 10 min, analyst
   consensus 24 h).
 
+## Design docs
+
+- **`DESIGN.html`** — the high-level design as a single self-contained page:
+  request lanes, architecture, the three agents, the gold price chain, position
+  sizing, the failure posture, and the measurements that changed the design.
+  Open it in a browser; no build step, no assets, works offline.
+  Also published at
+  [claude.ai/code/artifact/84a26d2e](https://claude.ai/code/artifact/84a26d2e-e64a-48e2-bf69-6c4b9c9d17f5).
+- `DESIGN.md` — high and low level, section by section
+- `DESIGN_ANALYSIS.md` — options considered and why each was chosen
+- `AGENTIC_AI_DESIGN.md` — the agent layer, part by part
+
 ## Suggested position sizing
 
 Both tables carry a **Suggested** column, and they read **one** allocation over
