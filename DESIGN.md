@@ -665,7 +665,8 @@ than by a query — dedupe cannot be forgotten at a call site.
 
 | Endpoint | Behavior |
 |---|---|
-| `GET /api/health` | Liveness check — public, no auth |
+| `GET /api/health` | Liveness — public, no auth. Used by Docker and nginx |
+| `GET /api/ready` | Readiness — worker pid, cache backend, rate-limit config, DB reachability |
 | `GET /api/watchlist` | Full table (prices, returns, status, advice, sector) |
 | `GET /api/allocation` | **One** set of suggested weights over the union of holdings and screener candidates — the single source both tables read |
 | `GET /api/stocks/{symbol}/summary` | Metrics + explainable advice for any NSE symbol, in or out of the watchlist |
@@ -693,6 +694,60 @@ than by a query — dedupe cannot be forgotten at a call site.
 | `GET /api/gold/alerts/config` · `POST /api/gold/alerts/test` | SMTP config state; send a test email |
 | `GET /api/gold/violations[?kind=&limit=]` | Guardrail audit trail — what the agent got wrong, and how often |
 | `GET /api/gold/eval` | Latest `eval_gold.py` results |
+
+## 9b. Deployment tiers
+
+The app runs two ways, and the simple one stays first-class: `uvicorn app.main:app`
+is a complete working system with an in-process cache and no other services. The
+compose stack adds the tier that only begins to matter with more than one worker.
+
+```
+            :443  ┌──────────────┐  TLS, edge rate limit, static SPA
+  browser ────────│    nginx     │
+                  └──────┬───────┘  least_conn
+                         │
+                  ┌──────┴───────┐  3 uvicorn workers, one process each
+                  │   backend    │
+                  └──┬────────┬──┘
+                     │        │
+              ┌──────┴──┐  ┌──┴──────────┐
+              │  redis  │  │ SQLite WAL  │
+              └─────────┘  └─────────────┘
+             shared cache   shared state
+```
+
+**Why the cache tier is load-bearing rather than decorative.** Five module-level
+dictionaries were the right answer for one process and the wrong one for three:
+each worker keeps its own copy and re-fetches everything the others already
+have. This is not hypothetical — adding a second endpoint that requested an
+overlapping symbol set doubled the volume to Yahoo and it began dropping symbols
+from batches, which surfaced as two holdings rendering "no data available". N
+workers with private caches multiply that by N. `cache.py` uses Redis when
+`REDIS_URL` is set and the in-process dicts otherwise; a restart no longer
+throws the cache away either.
+
+**SQLite needed WAL before it could take multiple workers.** The default
+`journal_mode=delete` makes a writer block every reader, which produces
+"database is locked" almost immediately under concurrency. WAL plus a 30-second
+busy timeout is set per connection in `db.py`; verified with four concurrent
+writers completing 100/100 writes.
+
+**Rate limiting exists in two places on purpose.** nginx protects the process
+from ever seeing a flood; `ratelimit.py` means the app is still safe if it is
+ever run without the proxy — which is exactly how it runs locally. Login counts
+**failures only**, so ordinary use never throttles the owner, and the failure
+mode is open: if the counter store is unreachable the request is allowed,
+because locking the owner out of their own portfolio is worse than briefly not
+limiting.
+
+| Concern | Where it is handled |
+|---|---|
+| TLS termination | nginx, self-signed locally (`deploy/make-certs.sh`) |
+| Static assets | nginx — hashed bundles immutable for a year, `index.html` `no-store` |
+| Load balancing | nginx `least_conn`, because an AI refresh takes minutes and a poll takes milliseconds; round-robin would hand new work to a worker mid-analysis |
+| Long requests | `proxy_read_timeout 600s` — the default 60s would cut an AI refresh off as a 504 that looks like a bug |
+| Client IP | `X-Forwarded-For`, honoured **only** when `TRUST_PROXY` is set, so a direct-to-uvicorn deployment cannot be spoofed |
+| Liveness vs readiness | `/api/health` is "is the process up"; `/api/ready` reports which cache backend and limits are live. A worker whose Redis vanished is still correct, so it must not be pulled from the pool |
 
 ## 10. Cost, resilience, security
 

@@ -1,0 +1,71 @@
+# Production-shaped local stack: gateway -> workers -> shared cache.
+#
+#   docker compose up --build
+#   https://localhost           (self-signed cert on first run — expect the warning)
+#
+# Everything still runs without this: `uvicorn app.main:app` alone is a complete
+# working system with an in-process cache. This adds the tier that only starts
+# to matter with more than one worker.
+
+services:
+  redis:
+    image: redis:7-alpine
+    # Cache only — every value is reconstructible from Yahoo, so persistence
+    # would buy nothing and cost disk. maxmemory keeps it bounded; allkeys-lru
+    # is right because entries all carry TTLs and are equally disposable.
+    command: >
+      redis-server --save "" --appendonly no
+      --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    env_file: ./backend/.env          # the same file the local run uses
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      TRUST_PROXY: "1"                # X-Forwarded-For is nginx's, not a client's
+    volumes:
+      # The database is state; the image is not. Bind-mounted so the container
+      # and a local `uvicorn` run share one database rather than diverging.
+      - ./backend/adviser.db:/app/adviser.db
+      - ./backend/jwt_secret.key:/app/jwt_secret.key
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend-build:
+    build: ./frontend
+    # Builds the SPA into a volume nginx serves, then exits. Not a long-running
+    # service — `docker compose up` will show it as completed.
+    volumes:
+      - spa:/out
+    command: sh -c "cp -r /dist/. /out/ && echo 'SPA built into the shared volume'"
+
+  gateway:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/proxy_common.conf:/etc/nginx/proxy_common.conf:ro
+      - ./deploy/certs:/etc/nginx/certs:ro
+      - spa:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+      - frontend-build
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/api/health", "--spider"]
+      interval: 20s
+      timeout: 4s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  spa:

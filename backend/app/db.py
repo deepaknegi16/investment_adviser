@@ -4,13 +4,37 @@ from __future__ import annotations
 import datetime as dt
 from pathlib import Path
 
-from sqlalchemy import Column, DateTime, Float, Integer, String, Text, create_engine
+from sqlalchemy import (
+    Column, DateTime, Float, Integer, String, Text, create_engine, event,
+)
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 DB_PATH = Path(__file__).resolve().parent.parent / "adviser.db"
 engine = create_engine(
-    f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False}
+    f"sqlite:///{DB_PATH}",
+    connect_args={"check_same_thread": False, "timeout": 30},
+    pool_pre_ping=True,
 )
+
+
+@event.listens_for(engine, "connect")
+def _sqlite_pragmas(dbapi_conn, _record):
+    """WAL + a real busy timeout — required once there is more than one worker.
+
+    The default journal mode is `delete`, under which a writer blocks every
+    reader and concurrent workers produce "database is locked" almost
+    immediately. WAL lets readers continue while one writer commits, which is
+    exactly the shape of this app: many reads, occasional cache writes.
+
+    Set per connection because PRAGMAs are connection-scoped, not database-wide
+    (journal_mode is the exception — it persists — but setting it here keeps the
+    two together and makes a fresh database correct from its first connection).
+    """
+    cur = dbapi_conn.cursor()
+    cur.execute("PRAGMA journal_mode=WAL")
+    cur.execute("PRAGMA busy_timeout=30000")
+    cur.execute("PRAGMA synchronous=NORMAL")   # safe with WAL, far fewer fsyncs
+    cur.close()
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
 

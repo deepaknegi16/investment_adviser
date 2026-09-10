@@ -100,6 +100,38 @@ The Vite dev server proxies `/api` to the backend on port 8000.
   are isolated in `backend/app/market_data.py` and cached (prices 10 min, analyst
   consensus 24 h).
 
+## Running it
+
+**Simple (unchanged, no Docker):** one uvicorn process, in-process cache.
+
+```bash
+cd backend && .venv/bin/python -m uvicorn app.main:app --port 8000
+cd frontend && npm run dev            # http://localhost:5173
+```
+
+**Production-shaped:** nginx gateway → 3 uvicorn workers → Redis shared cache.
+
+```bash
+./deploy/make-certs.sh                # self-signed cert, once
+docker compose up --build             # https://localhost
+```
+
+| Tier | What it adds |
+|---|---|
+| **nginx** | TLS, HTTP→HTTPS redirect, edge rate limiting, serves the SPA, `least_conn` load balancing |
+| **3 workers** | Real concurrency; an AI refresh no longer blocks the portfolio table |
+| **Redis** | One cache shared by all workers, surviving restarts. Falls back to in-process automatically when `REDIS_URL` is unset |
+| **SQLite WAL** | Concurrent readers with one writer — required before multiple workers, verified at 100/100 concurrent writes |
+
+`GET /api/ready` reports which worker answered, which cache backend is live and
+what the limits are. The self-signed certificate will produce a browser warning —
+that is expected; swap in real certs for anything beyond localhost.
+
+**Rate limiting** runs in both nginx and the app. Login counts *failures only*
+(5 per 15 min), so normal use never throttles you, and it fails open if the
+counter store is unreachable — being locked out of your own portfolio is worse
+than a brief gap in limiting.
+
 ## Design docs
 
 - **`DESIGN.html`** — the high-level design as a single self-contained page:

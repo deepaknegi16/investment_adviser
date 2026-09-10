@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -9,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from . import auth  # noqa: E402
+from . import cache, ratelimit  # noqa: E402
 from .auth import require_auth, router as auth_router  # noqa: E402
 from .db import init_db  # noqa: E402
 from .routers import (  # noqa: E402
@@ -16,6 +18,10 @@ from .routers import (  # noqa: E402
 )
 
 app = FastAPI(title="Indian Stock Portfolio Adviser")
+
+# Rate limiting sits outside CORS so a throttled response still carries the
+# headers the browser needs to read it.
+app.middleware("http")(ratelimit.middleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -47,4 +53,31 @@ def startup() -> None:
 
 @app.get("/api/health")
 def health():
+    """Liveness — is the process up? Used by Docker and nginx."""
     return {"ok": True}
+
+
+@app.get("/api/ready")
+def ready():
+    """Readiness — can this worker actually serve? Reports its dependencies.
+
+    Distinct from /health on purpose: a worker whose Redis vanished is still
+    alive and still correct (the cache degrades to per-process), so it must not
+    be pulled out of the load balancer for it. This endpoint says which mode it
+    is running in rather than failing.
+    """
+    from .db import engine
+
+    db_ok = True
+    try:
+        with engine.connect() as conn:
+            conn.exec_driver_sql("SELECT 1")
+    except Exception:
+        db_ok = False
+    return {
+        "ok": db_ok,
+        "worker_pid": os.getpid(),
+        "database": "ok" if db_ok else "unreachable",
+        "cache": cache.status(),
+        "rate_limits": ratelimit.status(),
+    }

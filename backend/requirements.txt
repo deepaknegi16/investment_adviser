@@ -10,3 +10,4 @@ PyJWT>=2.8
 google-genai>=1.40
 python-multipart>=0.0.9
 pypdf>=4.0
+redis>=5.0            # optional: shared cache when REDIS_URL is set

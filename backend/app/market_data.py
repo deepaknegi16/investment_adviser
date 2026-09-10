@@ -15,14 +15,15 @@ import pandas as pd
 import requests
 import yfinance as yf
 
+from . import cache
+
 PRICE_TTL = 600  # seconds
 CONSENSUS_TTL = 86400
 FUNDAMENTALS_TTL = 86400
 
+# Only guards the yfinance session below; all value caching now lives in
+# cache.py so it can be shared across workers.
 _lock = threading.Lock()
-_history_cache: Dict[str, dict] = {}  # symbol -> {ts, data}
-_consensus_cache: Dict[str, dict] = {}  # symbol -> {ts, data}
-_fundamentals_cache: Dict[str, dict] = {}  # symbol -> {ts, data}
 
 
 def _rsi(closes: pd.Series, period: int = 14) -> Optional[float]:
@@ -121,13 +122,12 @@ def get_closes(symbols: List[str]) -> Dict[str, pd.Series]:
     now = time.time()
     out: Dict[str, pd.Series] = {}
     missing: List[str] = []
-    with _lock:
-        for sym in symbols:
-            entry = _history_cache.get(sym)
-            if entry and now - entry["ts"] < PRICE_TTL:
-                out[sym] = entry["data"]
-            else:
-                missing.append(sym)
+    for sym in symbols:
+        hit = cache.get("hist", sym)
+        if hit is not None:
+            out[sym] = hit
+        else:
+            missing.append(sym)
 
     if missing:
         # Chunk: a single yf.download with 140 tickers is unreliable and drops
@@ -160,19 +160,17 @@ def get_closes(symbols: List[str]) -> Dict[str, pd.Series]:
                 for part in pool.map(one, still_missing):
                     fetched.update(part)
 
-        with _lock:
-            for sym, series in fetched.items():
-                _history_cache[sym] = {"ts": now, "data": series}
+        for sym, series in fetched.items():
+            cache.set("hist", sym, series, PRICE_TTL)
         out.update(fetched)
     return out
 
 
 def get_consensus(symbol: str) -> dict:
     """Analyst consensus from Yahoo (recommendationMean 1=Strong Buy..5=Sell)."""
-    with _lock:
-        entry = _consensus_cache.get(symbol)
-        if entry and time.time() - entry["ts"] < CONSENSUS_TTL:
-            return entry["data"]
+    hit = cache.get("consensus", symbol)
+    if hit is not None:
+        return hit
     result = {
         "mean": None, "label": None, "target": None, "analysts": None,
         "ownership": None,
@@ -196,8 +194,7 @@ def get_consensus(symbol: str) -> dict:
         }
     except Exception:
         pass
-    with _lock:
-        _consensus_cache[symbol] = {"ts": time.time(), "data": result}
+    cache.set("consensus", symbol, result, CONSENSUS_TTL)
     return result
 
 
@@ -281,16 +278,14 @@ def search_nse(query: str) -> List[dict]:
     ]
 
 
-_holders_cache: Dict[str, dict] = {}  # symbol -> {ts, data}
 HOLDERS_TTL = 86400
 
 
 def get_named_holders(symbol: str) -> List[dict]:
     """Named institutional holders from Yahoo (sparse/stale for NSE — best effort)."""
-    with _lock:
-        entry = _holders_cache.get(symbol)
-        if entry and time.time() - entry["ts"] < HOLDERS_TTL:
-            return entry["data"]
+    hit = cache.get("holders", symbol)
+    if hit is not None:
+        return hit
     holders: List[dict] = []
     try:
         df = yf.Ticker(symbol).institutional_holders
@@ -306,8 +301,7 @@ def get_named_holders(symbol: str) -> List[dict]:
                 })
     except Exception:
         pass
-    with _lock:
-        _holders_cache[symbol] = {"ts": time.time(), "data": holders}
+    cache.set("holders", symbol, holders, HOLDERS_TTL)
     return holders
 
 
@@ -371,10 +365,9 @@ def get_fundamentals(symbol: str) -> dict:
 
     Returns {"available": False} for ETFs and anything without fundamentals.
     """
-    with _lock:
-        entry = _fundamentals_cache.get(symbol)
-        if entry and time.time() - entry["ts"] < FUNDAMENTALS_TTL:
-            return entry["data"]
+    hit = cache.get("fundamentals", symbol)
+    if hit is not None:
+        return hit
 
     result: Dict[str, object] = {"available": False, "symbol": symbol}
     try:
@@ -389,8 +382,7 @@ def get_fundamentals(symbol: str) -> dict:
             "hold assets rather than running a business, so P/E, ROE and margins "
             "do not exist for them."
         )
-        with _lock:
-            _fundamentals_cache[symbol] = {"ts": time.time(), "data": result}
+        cache.set("fundamentals", symbol, result, FUNDAMENTALS_TTL)
         return result
 
     quote_ccy = info.get("currency")
@@ -460,12 +452,8 @@ def get_fundamentals(symbol: str) -> dict:
         "repaired": repaired,
         "metrics": metrics,
     }
-    with _lock:
-        _fundamentals_cache[symbol] = {"ts": time.time(), "data": result}
+    cache.set("fundamentals", symbol, result, FUNDAMENTALS_TTL)
     return result
-
-
-_warming: set = set()
 
 
 def warm_fundamentals(symbols: List[str]) -> None:
@@ -477,11 +465,15 @@ def warm_fundamentals(symbols: List[str]) -> None:
     Yahoo `info` calls on a 60-second poll; fetching them in a background thread
     costs the first load nothing and every later load is a 24 h cache hit.
     """
-    todo = [s for s in symbols
-            if s not in _warming and cached_fundamentals(s) is None]
+    todo = [s for s in symbols if cached_fundamentals(s) is None]
     if not todo:
         return
-    _warming.update(todo)
+    # One lock for the whole warm-up: without it, every worker (and every 60 s
+    # poll) would start its own sweep of the same symbols and multiply the load
+    # on Yahoo by the worker count — the exact pattern that made it start
+    # dropping symbols from batches.
+    if not cache.acquire("warm", "fundamentals", 300):
+        return
 
     def run():
         try:
@@ -491,16 +483,14 @@ def warm_fundamentals(symbols: List[str]) -> None:
                 except Exception:
                     pass  # a warm-up must never surface an error
         finally:
-            _warming.difference_update(todo)
+            cache.release("warm", "fundamentals")
 
     threading.Thread(target=run, daemon=True, name="warm-fundamentals").start()
 
 
 def cached_fundamentals(symbol: str) -> Optional[dict]:
     """Fundamentals from cache only — never triggers a fetch (60 s poll path)."""
-    with _lock:
-        entry = _fundamentals_cache.get(symbol)
-    return (entry or {}).get("data")
+    return cache.get("fundamentals", symbol)
 
 
 def cached_sector(symbol: str) -> Optional[str]:
@@ -511,11 +501,8 @@ def cached_sector(symbol: str) -> Optional[str]:
     avoids waiting on. Sector arrives once the drawer has been opened for a
     symbol, and until then allocation simply treats it as unknown.
     """
-    with _lock:
-        entry = _fundamentals_cache.get(symbol)
-    if not entry:
-        return None
-    return (entry.get("data") or {}).get("sector")
+    entry = cache.get("fundamentals", symbol)
+    return (entry or {}).get("sector") if entry else None
 
 
 def get_fundamentals_bulk(symbols: List[str], retry: bool = True) -> Dict[str, dict]:
@@ -533,15 +520,13 @@ def get_fundamentals_bulk(symbols: List[str], retry: bool = True) -> Dict[str, d
     blanks = [s for s, f in out.items() if not (f or {}).get("available")]
     if blanks:
         time.sleep(1.5)
-        with _lock:
-            for s in blanks:
-                _fundamentals_cache.pop(s, None)  # force a real refetch
+        for s in blanks:
+            cache.set("fundamentals", s, None, 1)  # expire, forcing a refetch
         with ThreadPoolExecutor(max_workers=2) as pool:
             out.update(dict(zip(blanks, pool.map(get_fundamentals, blanks))))
     return out
 
 
-_liquidity_cache: Dict[str, dict] = {}
 
 
 def get_liquidity(symbols: List[str]) -> Dict[str, Optional[float]]:
@@ -556,13 +541,12 @@ def get_liquidity(symbols: List[str]) -> Dict[str, Optional[float]]:
     now = time.time()
     out: Dict[str, Optional[float]] = {}
     missing: List[str] = []
-    with _lock:
-        for sym in symbols:
-            entry = _liquidity_cache.get(sym)
-            if entry and now - entry["ts"] < CONSENSUS_TTL:
-                out[sym] = entry["data"]
-            else:
-                missing.append(sym)
+    for sym in symbols:
+        hit = cache.get("liquidity", sym)
+        if hit is not None:
+            out[sym] = hit
+        else:
+            missing.append(sym)
     if not missing:
         return out
     try:
@@ -586,6 +570,6 @@ def get_liquidity(symbols: List[str]) -> Dict[str, Optional[float]]:
         except Exception:
             value = None
         out[sym] = value
-        with _lock:
-            _liquidity_cache[sym] = {"ts": now, "data": value}
+        if value is not None:
+            cache.set("liquidity", sym, value, CONSENSUS_TTL)
     return out

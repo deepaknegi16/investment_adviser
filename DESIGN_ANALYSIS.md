@@ -535,3 +535,39 @@ value for ~100%, and ROE is the ratio of the two. Without the fallback a quality
 screen rejects almost everything for missing data, which is a far worse error
 than a derived figure sitting ~2 points from the vendor's (ending vs average
 equity). Derived values are flagged, not passed off as reported.
+
+## 24. Deployment tier
+
+### Shared cache: Redis, SQLite, or stay single-worker?
+
+| Option | Pros | Cons |
+|---|---|---|
+| **Redis when configured, memory otherwise** ✅ | Workers share one cache and it survives restarts; the single-process path is unchanged and needs no Redis | One more service to run; values are pickled, so the store must not be shared or public |
+| Keep in-process dicts | Simplest | Cannot go multi-worker without multiplying external request volume by the worker count — measured to break Yahoo fetches already |
+| SQLite-backed cache | No new service, survives restarts | Write contention on the same file the app already uses for state |
+
+### Rate limiting in two layers
+
+nginx alone would be enough *when deployed behind nginx* — and the app runs
+locally without it every day. The app-level limiter is what makes it safe in
+both modes. Two details were deliberate: only **failed** logins count, so the
+owner is never locked out by normal use, and the limiter **fails open**, because
+an unreachable counter store locking someone out of their own portfolio is worse
+than a brief window without limiting.
+
+nginx's default rejection status is 503, which tells a client the service is
+down when the truth is that it sent too many requests. Set to 429 so clients can
+back off correctly.
+
+### least_conn rather than round robin
+
+Request cost here differs by four orders of magnitude — an AI refresh runs for
+minutes, a watchlist poll for milliseconds. Round robin would keep handing new
+work to a worker already blocked mid-analysis.
+
+### What the compose stack does not add
+
+An LB in front of one user balances nothing on its own; its value here is TLS,
+edge limiting and static serving, with load balancing only mattering because
+there are now three workers. That is worth being explicit about rather than
+implying the tier earns its place on traffic it does not have.
