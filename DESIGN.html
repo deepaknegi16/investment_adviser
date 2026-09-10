@@ -346,7 +346,135 @@ footer p{max-width:none;margin-bottom:9px}
 
 <section>
   <div class="sec-head">
-    <span class="eyebrow">03 — the agents</span>
+    <span class="eyebrow">03 — deployment</span>
+    <h2>Two ways to run it, and the simple one stays first-class</h2>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 880 330" role="img" aria-label="Left: the simple deployment is one uvicorn process with a private in-process cache. Right: the compose stack adds an nginx gateway for TLS, edge rate limiting and static assets, three uvicorn workers behind least-connection balancing, and a Redis cache shared by all three, with SQLite in WAL mode so concurrent workers do not deadlock.">
+      <defs>
+        <marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <!-- ============ LEFT: simple ============ -->
+      <text x="0" y="14" font-family="monospace" font-size="10.5" font-weight="600" fill="var(--free)" letter-spacing="1">SIMPLE — uvicorn app.main:app</text>
+      <text x="0" y="29" font-family="monospace" font-size="9.5" fill="var(--muted)">no Docker, no Redis, complete system</text>
+
+      <rect x="0" y="44" width="120" height="32" rx="4" fill="var(--surface)" stroke="currentColor" stroke-width="1.5"/>
+      <text x="60" y="64" text-anchor="middle" font-family="monospace" font-size="10.5" fill="currentColor">browser</text>
+      <line x1="60" y1="76" x2="60" y2="104" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar4)"/>
+      <text x="68" y="94" font-family="monospace" font-size="9" fill="var(--muted)">http</text>
+
+      <rect x="0" y="104" width="240" height="54" rx="4" fill="var(--free-bg)" stroke="var(--free)" stroke-width="1.5"/>
+      <text x="120" y="126" text-anchor="middle" font-family="monospace" font-size="11" font-weight="600" fill="var(--free)">1 uvicorn process</text>
+      <text x="120" y="144" text-anchor="middle" font-family="monospace" font-size="9.5" fill="var(--muted)">cache lives inside it</text>
+
+      <line x1="120" y1="158" x2="120" y2="188" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar4)"/>
+      <rect x="30" y="188" width="180" height="38" rx="4" fill="var(--sunken)" stroke="currentColor" stroke-width="1.2"/>
+      <text x="120" y="206" text-anchor="middle" font-family="monospace" font-size="10.5" fill="currentColor">SQLite</text>
+      <text x="120" y="219" text-anchor="middle" font-family="monospace" font-size="9" fill="var(--muted)">one writer, no contention</text>
+
+      <text x="0" y="256" font-family="monospace" font-size="9.5" fill="var(--muted)">cache dies on restart</text>
+      <text x="0" y="270" font-family="monospace" font-size="9.5" fill="var(--muted)">no TLS · no rate limit at the edge</text>
+
+      <!-- divider -->
+      <line x1="310" y1="10" x2="310" y2="300" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 5"/>
+      <text x="310" y="318" text-anchor="middle" font-family="monospace" font-size="10" fill="var(--faint)">what the stack adds →</text>
+
+      <!-- ============ RIGHT: production-shaped ============ -->
+      <text x="352" y="14" font-family="monospace" font-size="10.5" font-weight="600" fill="var(--metered)" letter-spacing="1">PRODUCTION-SHAPED — docker compose up</text>
+      <text x="352" y="29" font-family="monospace" font-size="9.5" fill="var(--muted)">same code, four containers</text>
+
+      <rect x="352" y="44" width="120" height="32" rx="4" fill="var(--surface)" stroke="currentColor" stroke-width="1.5"/>
+      <text x="412" y="64" text-anchor="middle" font-family="monospace" font-size="10.5" fill="currentColor">browser</text>
+      <line x1="472" y1="60" x2="500" y2="60" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar4)"/>
+      <text x="486" y="54" text-anchor="middle" font-family="monospace" font-size="9" fill="var(--flag)">https</text>
+
+      <rect x="500" y="40" width="248" height="40" rx="4" fill="var(--flag-bg)" stroke="var(--flag)" stroke-width="1.5"/>
+      <text x="624" y="58" text-anchor="middle" font-family="monospace" font-size="10.5" font-weight="600" fill="var(--flag)">nginx gateway</text>
+      <text x="624" y="72" text-anchor="middle" font-family="monospace" font-size="9" fill="var(--flag)">TLS · rate limit · static SPA · least_conn</text>
+
+      <line x1="624" y1="80" x2="624" y2="102" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="430" y1="102" x2="818" y2="102" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="430" y1="102" x2="430" y2="122" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar4)"/>
+      <line x1="624" y1="102" x2="624" y2="122" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar4)"/>
+      <line x1="818" y1="102" x2="818" y2="122" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar4)"/>
+
+      <rect x="376" y="122" width="108" height="38" rx="4" fill="var(--metered-bg)" stroke="var(--metered)" stroke-width="1.5"/>
+      <text x="430" y="146" text-anchor="middle" font-family="monospace" font-size="10.5" fill="var(--metered)">worker 1</text>
+      <rect x="570" y="122" width="108" height="38" rx="4" fill="var(--metered-bg)" stroke="var(--metered)" stroke-width="1.5"/>
+      <text x="624" y="146" text-anchor="middle" font-family="monospace" font-size="10.5" fill="var(--metered)">worker 2</text>
+      <rect x="764" y="122" width="108" height="38" rx="4" fill="var(--metered-bg)" stroke="var(--metered)" stroke-width="1.5"/>
+      <text x="818" y="146" text-anchor="middle" font-family="monospace" font-size="10.5" fill="var(--metered)">worker 3</text>
+
+      <line x1="430" y1="160" x2="430" y2="186" stroke="var(--free)" stroke-width="1.5" marker-end="url(#ar4)" color="var(--free)"/>
+      <line x1="624" y1="160" x2="624" y2="186" stroke="var(--free)" stroke-width="1.5" marker-end="url(#ar4)" color="var(--free)"/>
+      <line x1="818" y1="160" x2="818" y2="186" stroke="var(--free)" stroke-width="1.5" marker-end="url(#ar4)" color="var(--free)"/>
+
+      <rect x="376" y="186" width="496" height="42" rx="4" fill="var(--free-bg)" stroke="var(--free)" stroke-width="1.5"/>
+      <text x="624" y="205" text-anchor="middle" font-family="monospace" font-size="11" font-weight="600" fill="var(--free)">Redis — one cache, shared by all three</text>
+      <text x="624" y="220" text-anchor="middle" font-family="monospace" font-size="9" fill="var(--muted)">without it each worker refetches what the others already have</text>
+
+      <line x1="624" y1="228" x2="624" y2="252" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar4)"/>
+      <rect x="500" y="252" width="248" height="42" rx="4" fill="var(--sunken)" stroke="currentColor" stroke-width="1.2"/>
+      <text x="624" y="270" text-anchor="middle" font-family="monospace" font-size="10.5" fill="currentColor">SQLite — WAL mode</text>
+      <text x="624" y="285" text-anchor="middle" font-family="monospace" font-size="9" fill="var(--flag)">`delete` mode deadlocks under concurrency</text>
+    </svg>
+    <figcaption>The same application code runs both ways. The right-hand tier is what a second and
+    third worker make necessary — a shared cache, and a journal mode that lets them read while one
+    writes.</figcaption>
+  </figure>
+
+  <p>The plain <code>uvicorn</code> path is not a degraded mode; it is the daily one, and it needs
+  no Docker and no Redis. What the stack adds only starts to matter once there is more than one
+  worker — which is exactly when the five module-level dictionaries the app used for caching become
+  the wrong answer, because each worker keeps its own copy and re-fetches everything the others
+  already have.</p>
+
+  <div class="note">
+    <p><b>That is measured, not hypothetical.</b> Adding one endpoint whose symbol set overlapped
+    the watchlist's doubled the request volume to Yahoo, which began dropping symbols from batches
+    — surfacing as two holdings rendering <em>"no data available"</em> while a direct fetch for them
+    worked fine. Three workers with private caches multiply that by three.</p>
+  </div>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Tier</th><th>What it actually buys</th></tr></thead>
+      <tbody>
+        <tr><td><b>nginx</b></td><td>TLS termination, HTTP→HTTPS redirect, edge rate limiting, serves the SPA so the app server never touches static assets</td></tr>
+        <tr><td><b>3 workers</b></td><td>Real concurrency — an AI refresh no longer blocks a watchlist poll. Balanced by <code>least_conn</code>, because request cost here spans four orders of magnitude and round-robin would keep handing work to a worker blocked mid-analysis</td></tr>
+        <tr><td><b>Redis</b></td><td>One cache for all workers, surviving restarts. Falls back to in-process automatically when <code>REDIS_URL</code> is unset</td></tr>
+        <tr><td><b>SQLite WAL</b></td><td>Concurrent readers alongside one writer. Not optional — the default <code>delete</code> journal mode has a writer block every reader, which deadlocks almost immediately with three workers</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 style="margin-top:26px">Rate limiting, in two layers deliberately</h3>
+  <p>Until this tier existed, <code>/api/auth/login</code> had <b>no throttling of any kind</b> —
+  and the dashboard is bound to the LAN. nginx keeps a flood from ever reaching the process;
+  <code>ratelimit.py</code> means the app is still safe when run without the proxy, which is exactly
+  how it runs locally. Two details are deliberate: only <b>failed</b> logins count, so ordinary use
+  never throttles the owner, and the limiter <b>fails open</b> — an unreachable counter store
+  locking someone out of their own portfolio is worse than a brief window without limiting.</p>
+
+  <div class="note">
+    <p>Running it surfaced a detail worth keeping: nginx answers <code>503</code> by default when it
+    rate limits, which tells a client the service is <em>down</em> when the truth is that it sent too
+    many requests. Set to <code>429</code> so clients back off instead of retrying immediately.</p>
+  </div>
+
+  <p><b>What this does not buy.</b> A load balancer in front of a single user balances no load. Its
+  value here is TLS, edge limiting and static serving; the balancing matters only because there are
+  now three workers to balance across. Worth stating plainly rather than implying the tier earns its
+  place on traffic the system does not have.</p>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">04 — the agents</span>
     <h2>Three agents, one runner</h2>
   </div>
 
@@ -392,7 +520,7 @@ footer p{max-width:none;margin-bottom:9px}
 
 <section>
   <div class="sec-head">
-    <span class="eyebrow">04 — the gold chain</span>
+    <span class="eyebrow">05 — the gold chain</span>
     <h2>Which link moved?</h2>
   </div>
 
@@ -436,7 +564,7 @@ footer p{max-width:none;margin-bottom:9px}
 
 <section>
   <div class="sec-head">
-    <span class="eyebrow">05 — position sizing</span>
+    <span class="eyebrow">06 — position sizing</span>
     <h2>How much, not just whether</h2>
   </div>
 
@@ -507,7 +635,7 @@ footer p{max-width:none;margin-bottom:9px}
 
 <section>
   <div class="sec-head">
-    <span class="eyebrow">06 — the engineering record</span>
+    <span class="eyebrow">07 — the engineering record</span>
     <h2>What measurement changed</h2>
   </div>
 
@@ -558,7 +686,7 @@ footer p{max-width:none;margin-bottom:9px}
 
 <section>
   <div class="sec-head">
-    <span class="eyebrow">07 — failure posture</span>
+    <span class="eyebrow">08 — failure posture</span>
     <h2>What happens when things break</h2>
   </div>
 
@@ -586,7 +714,7 @@ footer p{max-width:none;margin-bottom:9px}
 
 <section>
   <div class="sec-head">
-    <span class="eyebrow">08 — storage</span>
+    <span class="eyebrow">09 — storage</span>
     <h2>Twelve tables, one file</h2>
   </div>
 
