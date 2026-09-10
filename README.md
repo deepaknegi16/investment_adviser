@@ -153,10 +153,20 @@ docker compose --profile observability up -d    # + ELK, ~1.7 GB more
 - **Kibana** — http://localhost:5601 with the profile running. Make a data view
   on `adviser-*`, then query `http_status >= 500` or `duration_ms > 5000`.
 
-See `deploy/elk/README.md` for what to look at first.
+Kibana's data view and a saved search (**Adviser — requests**) are created
+automatically by the `kibana-init` service — without one, Discover shows nothing
+even when the index is full, which looks exactly like a broken pipeline.
+
+See `deploy/elk/README.md` for what to look at first, or `RUNBOOK.html` for the
+full operator guide.
 
 ## Design docs
 
+- **`RUNBOOK.html`** — the developer/operator guide: every component, how to
+  start it, the commands you'll actually run, an environment reference, and
+  troubleshooting for problems that really happened. Commands are click-to-copy.
+  Also at
+  [claude.ai/code/artifact/e07cb550](https://claude.ai/code/artifact/e07cb550-7fca-472c-ace8-1e376ee8d1c5).
 - **`DESIGN.html`** — the high-level design as a single self-contained page:
   request lanes, architecture, the three agents, the gold price chain, position
   sizing, the failure posture, and the measurements that changed the design.

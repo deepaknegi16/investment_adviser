@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="Developer and operator guide for the NSE portfolio adviser.">
+<title>Adviser Runbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+:root{
+  --paper:#FBFAF7; --surface:#FFFFFF; --sunken:#F3F2ED; --term:#F0EEE8;
+  --line:#E1DFD7; --line-soft:#EDEBE4;
+  --ink:#16191C; --ink-2:#414850; --muted:#7A828B; --faint:#A6ACB2;
+  --free:#2F6F62; --metered:#B0741C; --external:#3A5C99; --flag:#9B2B3B;
+  --free-bg:rgba(47,111,98,.10); --metered-bg:rgba(176,116,28,.12);
+  --external-bg:rgba(58,92,153,.10); --flag-bg:rgba(155,43,59,.10);
+  --shadow:0 1px 2px rgba(22,25,28,.04), 0 10px 30px -22px rgba(22,25,28,.35);
+  --sans:'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;
+  --serif:'IBM Plex Serif',Georgia,'Times New Roman',serif;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#121416; --surface:#1A1D20; --sunken:#212528; --term:#0D0F11;
+  --line:#2F3438; --line-soft:#25292C;
+  --ink:#ECEEF0; --ink-2:#C6CBD0; --muted:#8B939B; --faint:#666E75;
+  --free:#5FB3A1; --metered:#D9A24A; --external:#7FA3E0; --flag:#D8737F;
+  --free-bg:rgba(95,179,161,.13); --metered-bg:rgba(217,162,74,.14);
+  --external-bg:rgba(127,163,224,.13); --flag-bg:rgba(216,115,127,.13);
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -22px rgba(0,0,0,.9);
+}}
+:root[data-theme="dark"]{
+  --paper:#121416; --surface:#1A1D20; --sunken:#212528; --term:#0D0F11;
+  --line:#2F3438; --line-soft:#25292C;
+  --ink:#ECEEF0; --ink-2:#C6CBD0; --muted:#8B939B; --faint:#666E75;
+  --free:#5FB3A1; --metered:#D9A24A; --external:#7FA3E0; --flag:#D8737F;
+  --free-bg:rgba(95,179,161,.13); --metered-bg:rgba(217,162,74,.14);
+  --external-bg:rgba(127,163,224,.13); --flag-bg:rgba(216,115,127,.13);
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -22px rgba(0,0,0,.9);
+}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--serif);
+  font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased;padding:0 22px 96px}
+.wrap{max-width:1000px;margin:0 auto}
+h1,h2,h3,h4{font-family:var(--sans);letter-spacing:-.015em;text-wrap:balance}
+h1{font-weight:700;font-size:clamp(30px,4.6vw,44px);line-height:1.06;margin:10px 0 8px}
+h2{font-weight:600;font-size:clamp(20px,2.5vw,26px);margin:0 0 6px}
+h3{font-weight:600;font-size:16px;margin:22px 0 6px}
+p{margin:0 0 14px;max-width:70ch}
+code{font-family:var(--mono);font-size:.87em;background:var(--sunken);
+  padding:.12em .38em;border-radius:3px}
+a{color:inherit;border-bottom:1px solid var(--line);text-decoration:none}
+a:hover{border-bottom-color:var(--metered)}
+:focus-visible{outline:2px solid var(--metered);outline-offset:3px;border-radius:3px}
+.eyebrow{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted)}
+
+header{padding:52px 0 28px;border-bottom:1px solid var(--line)}
+.lede{font-size:18.5px;line-height:1.55;color:var(--ink-2);max-width:62ch;margin-top:14px}
+section{padding:44px 0;border-bottom:1px solid var(--line-soft)}
+section:last-of-type{border-bottom:none}
+.sec-head{margin-bottom:20px}
+.sec-head .eyebrow{display:block;margin-bottom:8px}
+
+/* command blocks — click to copy, because a runbook is for copying from */
+.cmd{position:relative;background:var(--term);border:1px solid var(--line);
+  border-radius:6px;margin:0 0 12px;overflow:hidden}
+.cmd-label{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--muted);padding:9px 14px 0}
+.cmd pre{margin:0;padding:9px 52px 13px 14px;overflow-x:auto;
+  font-family:var(--mono);font-size:13px;line-height:1.72;color:var(--ink)}
+.cmd .p{color:var(--faint);user-select:none}
+.cmd .c{color:var(--muted)}
+.copy{position:absolute;top:9px;right:9px;font-family:var(--mono);font-size:10.5px;
+  padding:4px 9px;border-radius:4px;border:1px solid var(--line);
+  background:var(--surface);color:var(--muted);cursor:pointer}
+.copy:hover{color:var(--ink);border-color:var(--muted)}
+.copy.ok{color:var(--free);border-color:var(--free)}
+
+.tbl{overflow-x:auto;margin:16px 0}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:14px}
+th{font-family:var(--mono);text-align:left;font-weight:500;font-size:10.5px;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+  padding:0 12px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid var(--line-soft);color:var(--ink-2);
+  vertical-align:top;line-height:1.5}
+tr:last-child td{border-bottom:none}
+td b{color:var(--ink);font-weight:600}
+td code{font-size:12.5px}
+
+.pill{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.07em;
+  text-transform:uppercase;padding:2px 7px;border-radius:3px;white-space:nowrap}
+.pill.req{background:var(--flag-bg);color:var(--flag)}
+.pill.opt{background:var(--sunken);color:var(--muted)}
+.pill.core{background:var(--free-bg);color:var(--free)}
+.pill.obs{background:var(--metered-bg);color:var(--metered)}
+
+.note{border-left:2px solid var(--metered);padding:2px 0 2px 16px;margin:20px 0;max-width:70ch}
+.note p{font-size:15px;color:var(--ink-2);margin-bottom:0}
+
+.trouble{display:grid;gap:11px;margin-top:16px}
+.tr-item{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:14px 16px}
+.tr-item h4{margin:0 0 3px;font-size:14.5px;color:var(--ink)}
+.tr-item .sym{font-family:var(--mono);font-size:12px;color:var(--flag);margin-bottom:6px}
+.tr-item p{font-size:14px;margin:0 0 8px;color:var(--ink-2);max-width:none}
+.tr-item .cmd{margin-bottom:0}
+
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-top:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:15px 16px}
+.card h3{margin:0 0 4px;font-size:15px}
+.card p{font-size:14px;color:var(--ink-2);margin:0;max-width:none}
+
+footer{padding:34px 0 0;border-top:1px solid var(--line);margin-top:24px;
+  font-family:var(--mono);font-size:11.5px;line-height:1.75;color:var(--muted)}
+footer p{max-width:none;margin-bottom:8px}
+@media (max-width:640px){body{padding:0 15px 60px}.cmd pre{font-size:12px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Developer &amp; operator guide &nbsp;·&nbsp; NSE portfolio adviser</div>
+  <h1>Adviser Runbook</h1>
+  <p class="lede">Every component, what it is for, how to start it, and what to do when it
+  misbehaves. Commands are click-to-copy.</p>
+</header>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Start here</span>
+    <h2>Three ways to run it</h2>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>Daily — no Docker</h3>
+      <p>Two processes, in-process cache, plain HTTP. This is a complete system, not a degraded
+      mode. Use it for development.</p>
+    </div>
+    <div class="card">
+      <h3>Production-shaped</h3>
+      <p>nginx + 3 workers + Redis over HTTPS. Use it to check behaviour under concurrency, or to
+      reach the app from your phone.</p>
+    </div>
+    <div class="card">
+      <h3>+ Observability</h3>
+      <p>Adds Elasticsearch, Kibana and Filebeat. ~1.7&nbsp;GB extra, so it is opt-in behind a
+      compose profile.</p>
+    </div>
+  </div>
+
+  <h3>1 · Daily development</h3>
+  <div class="cmd">
+    <div class="cmd-label">two terminals</div>
+    <button class="copy" type="button">copy</button>
+<pre><span class="c"># terminal 1 — API on :8000</span>
+cd backend && .venv/bin/python -m uvicorn app.main:app --port 8000
+
+<span class="c"># terminal 2 — SPA on :5173, proxies /api to :8000</span>
+cd frontend && npm run dev</pre>
+  </div>
+  <p>Open <code>http://localhost:5173</code>. Nothing else is required — no Docker, no Redis.</p>
+
+  <h3>2 · Production-shaped stack</h3>
+  <div class="cmd">
+    <div class="cmd-label">first run creates a self-signed certificate</div>
+    <button class="copy" type="button">copy</button>
+<pre>./deploy/make-certs.sh
+docker compose up --build -d
+docker compose ps</pre>
+  </div>
+  <p>Open <code>https://localhost</code>. The browser will warn about the self-signed certificate —
+  that is expected; swap in real certs for anything beyond your own machine.</p>
+
+  <h3>3 · With the observability tier</h3>
+  <div class="cmd">
+    <div class="cmd-label">adds elasticsearch, kibana, filebeat</div>
+    <button class="copy" type="button">copy</button>
+<pre>docker compose --profile observability up -d
+
+<span class="c"># Kibana — the data view and saved search are created automatically</span>
+open http://localhost:5601/app/discover#/view/adviser-requests</pre>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Inventory</span>
+    <h2>What is running, and why</h2>
+  </div>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Component</th><th>Tier</th><th>Port</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><b>backend</b><br><code>uvicorn · FastAPI</code></td><td><span class="pill core">core</span></td><td class="mono">8000</td><td>The application. 38 routes, 3 workers in Docker, 1 locally</td></tr>
+        <tr><td><b>frontend</b><br><code>React · Vite</code></td><td><span class="pill core">core</span></td><td class="mono">5173</td><td>SPA. In Docker it is built once and served by nginx instead</td></tr>
+        <tr><td><b>gateway</b><br><code>nginx</code></td><td><span class="pill core">docker</span></td><td class="mono">80 · 443</td><td>TLS, HTTP→HTTPS redirect, edge rate limiting, static assets, <code>least_conn</code> balancing</td></tr>
+        <tr><td><b>redis</b></td><td><span class="pill core">docker</span></td><td class="mono">6379</td><td>Cache shared by all workers. Without it each worker refetches what the others already have</td></tr>
+        <tr><td><b>SQLite</b><br><code>adviser.db</code></td><td><span class="pill core">core</span></td><td class="mono">—</td><td>Watchlist plus every cached result. WAL mode so workers do not deadlock</td></tr>
+        <tr><td><b>elasticsearch</b></td><td><span class="pill obs">observability</span></td><td class="mono">9200</td><td>Log index. Loopback only, security disabled — local use only</td></tr>
+        <tr><td><b>kibana</b></td><td><span class="pill obs">observability</span></td><td class="mono">5601</td><td>Log search and dashboards</td></tr>
+        <tr><td><b>filebeat</b></td><td><span class="pill obs">observability</span></td><td class="mono">—</td><td>Ships container stdout, parsing the backend's JSON into fields</td></tr>
+        <tr><td><b>kibana-init</b></td><td><span class="pill obs">observability</span></td><td class="mono">—</td><td>Creates the data view and saved search, then exits. Without it Discover is empty even when the index is full</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>URLs</h3>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>URL</th><th>What</th></tr></thead>
+      <tbody>
+        <tr><td><code>http://localhost:5173</code></td><td>SPA, development mode</td></tr>
+        <tr><td><code>https://localhost</code></td><td>SPA + API through the gateway</td></tr>
+        <tr><td><code>http://&lt;lan-ip&gt;:5173</code></td><td>From your phone on the same Wi-Fi. Find it with <code>ipconfig getifaddr en0</code> — DHCP changes it</td></tr>
+        <tr><td><code>/api/health</code> · <code>/api/ready</code></td><td>Liveness; readiness with worker pid, cache backend and limits</td></tr>
+        <tr><td><code>/metrics</code></td><td>Prometheus exposition. Not exposed through nginx</td></tr>
+        <tr><td><code>http://localhost:5601</code></td><td>Kibana</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Tasks</span>
+    <h2>Things you will actually run</h2>
+  </div>
+
+  <h3>Gold watch — the unattended agent</h3>
+  <div class="cmd">
+    <div class="cmd-label">from backend/</div>
+    <button class="copy" type="button">copy</button>
+<pre>.venv/bin/python gold_watch_run.py              <span class="c"># email only if material</span>
+.venv/bin/python gold_watch_run.py --dry-run    <span class="c"># research, never email</span>
+.venv/bin/python gold_watch_run.py --digest     <span class="c"># email regardless</span>
+.venv/bin/python gold_watch_run.py --test-email <span class="c"># check SMTP only</span></pre>
+  </div>
+
+  <h3>Evaluation suites</h3>
+  <div class="cmd">
+    <div class="cmd-label">from backend/ — the adversarial suite needs no model and no network</div>
+    <button class="copy" type="button">copy</button>
+<pre>.venv/bin/python eval_gold.py --adversarial   <span class="c"># 12 guardrail fixtures, &lt;1s</span>
+.venv/bin/python eval_gold.py --no-judge      <span class="c"># + tagging accuracy</span>
+.venv/bin/python eval_gold.py                 <span class="c"># + LLM judge on the prose</span>
+.venv/bin/python eval_rag.py --no-judge       <span class="c"># RAG retrieval metrics</span></pre>
+  </div>
+  <p>Both exit non-zero on failure, so <code>eval_gold.py --adversarial</code> works as a pre-push
+  check.</p>
+
+  <h3>Schedule the watcher</h3>
+  <div class="cmd">
+    <div class="cmd-label">crontab -e · replace /path with your checkout</div>
+    <button class="copy" type="button">copy</button>
+<pre>30 9,15 * * 1-5  cd /path/backend && .venv/bin/python gold_watch_run.py >> gold_watch.log 2>&1
+45 18   * * 5    cd /path/backend && .venv/bin/python gold_watch_run.py --digest >> gold_watch.log 2>&1</pre>
+  </div>
+
+  <h3>Change the dashboard password</h3>
+  <div class="cmd">
+    <div class="cmd-label">generate, set AUTH_PASSWORD in backend/.env, then restart</div>
+    <button class="copy" type="button">copy</button>
+<pre>python3 -c "import secrets,string; a=''.join(c for c in string.ascii_letters+string.digits if c not in 'O0Il1'); print('-'.join(''.join(secrets.choice(a) for _ in range(5)) for _ in range(3)))"
+
+<span class="c"># rotating the password alone does NOT end existing sessions —</span>
+<span class="c"># JWTs stay valid for their 24h TTL. Delete the key to force re-login:</span>
+rm backend/jwt_secret.key</pre>
+  </div>
+
+  <h3>Stack control</h3>
+  <div class="cmd">
+    <div class="cmd-label">docker</div>
+    <button class="copy" type="button">copy</button>
+<pre>docker compose ps                          <span class="c"># status + health</span>
+docker compose logs backend --tail 50      <span class="c"># JSON log lines</span>
+docker compose restart backend             <span class="c"># after a code change without rebuild</span>
+docker compose up -d --build backend       <span class="c"># after a dependency change</span>
+docker compose down                        <span class="c"># stop everything, keep volumes</span>
+docker compose --profile observability down <span class="c"># include the ELK tier</span></pre>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Configuration</span>
+    <h2>Environment</h2>
+  </div>
+
+  <p>Everything lives in <code>backend/.env</code>, which is gitignored. <code>.env.example</code>
+  documents the shape without any values.</p>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Variable</th><th></th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>AUTH_PASSWORD</code></td><td><span class="pill req">required</span></td><td><b>The backend refuses to start without it</b>, and rejects the old example value <code>adviser@123</code> by name</td></tr>
+        <tr><td><code>GEMINI_API_KEY</code></td><td><span class="pill req">for AI</span></td><td>Free key from aistudio.google.com. Everything except the AI panels works without it</td></tr>
+        <tr><td><code>GROQ_API_KEY</code></td><td><span class="pill opt">optional</span></td><td>Fallback when Gemini is rate-limited</td></tr>
+        <tr><td><code>SMTP_PASSWORD</code></td><td><span class="pill opt">optional</span></td><td>Gmail App Password. Without it the gold watch researches and stores but sends nothing</td></tr>
+        <tr><td><code>REDIS_URL</code></td><td><span class="pill opt">optional</span></td><td>Set by compose. Unset means the in-process cache — correct for a single worker</td></tr>
+        <tr><td><code>TRUST_PROXY</code></td><td><span class="pill opt">docker</span></td><td>Honour <code>X-Forwarded-For</code>. Only set it when actually behind the proxy, or client IPs can be spoofed</td></tr>
+        <tr><td><code>RATE_LIMIT_LOGIN_MAX</code></td><td><span class="pill opt">optional</span></td><td>Failed sign-ins before lockout. Default 5 per 15 min; successes never count</td></tr>
+        <tr><td><code>LOG_LEVEL</code></td><td><span class="pill opt">optional</span></td><td><code>INFO</code> default; <code>DEBUG</code> is loud</td></tr>
+        <tr><td><code>ANALYST_MODEL</code> etc.</td><td><span class="pill opt">optional</span></td><td>Per-agent model overrides — also <code>SCREENER_MODEL</code>, <code>CHAT_MODEL</code>, <code>GOLD_WATCH_MODEL</code>, <code>JUDGE_MODEL</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">When it misbehaves</span>
+    <h2>Troubleshooting</h2>
+  </div>
+
+  <p>Every entry below is something that actually happened while building this, not a hypothetical.</p>
+
+  <div class="trouble">
+    <div class="tr-item">
+      <h4>Kibana Discover is completely empty</h4>
+      <div class="sym">no documents, no error, index full</div>
+      <p>Kibana 8 shows nothing until a <b>data view</b> exists, and does not create one for you. The
+      <code>kibana-init</code> service now does it automatically — if you are on an older stack, or it
+      failed, create it by hand:</p>
+      <div class="cmd"><button class="copy" type="button">copy</button>
+<pre>curl -X POST http://localhost:5601/api/data_views/data_view \
+  -H 'kbn-xsrf: true' -H 'Content-Type: application/json' \
+  -d '{"data_view":{"title":"adviser-*","timeFieldName":"@timestamp"}}'</pre></div>
+    </div>
+
+    <div class="tr-item">
+      <h4>Logs stop arriving in Elasticsearch, app looks fine</h4>
+      <div class="sym">filebeat: "Cannot index event (status=400): dropping event!"</div>
+      <p>A field type conflict. Elasticsearch's beats template maps <code>service</code> and
+      <code>error</code> as <b>objects</b>; emitting them as bare strings makes every document fail
+      and Filebeat drops the lot silently. Replay a real line to read the actual rejection:</p>
+      <div class="cmd"><button class="copy" type="button">copy</button>
+<pre>docker compose logs backend --tail 20 | grep -o '{"@timestamp.*}' | tail -1 \
+  | xargs -0 -I{} curl -s -XPOST 'http://localhost:9200/probe/_doc' \
+      -H 'Content-Type: application/json' -d '{}'</pre></div>
+    </div>
+
+    <div class="tr-item">
+      <h4>Login returns 429 and you are locked out</h4>
+      <div class="sym">HTTP 429 · "Too many failed sign-ins"</div>
+      <p>The rate limiter, doing its job — five failures per fifteen minutes, keyed by IP. Wait it
+      out, or clear the counters:</p>
+      <div class="cmd"><button class="copy" type="button">copy</button>
+<pre>docker compose exec redis redis-cli --scan --pattern 'adviser:v1:rl:*' \
+  | xargs -r -n1 docker compose exec -T redis redis-cli unlink</pre></div>
+    </div>
+
+    <div class="tr-item">
+      <h4>Backend will not start</h4>
+      <div class="sym">AuthNotConfigured · "Application startup failed. Exiting."</div>
+      <p>Deliberate. <code>AUTH_PASSWORD</code> is missing or is still the published example value.
+      The error message prints the exact fix. This is the app refusing to serve on a password anyone
+      can read in the repo.</p>
+    </div>
+
+    <div class="tr-item">
+      <h4>A holding shows "no data available"</h4>
+      <div class="sym">one or two rows blank while the rest are fine</div>
+      <p>Yahoo dropped those symbols from a batch — it does this under load. History is cached per
+      symbol and missing ones are retried individually, so it usually self-heals within the 10-minute
+      TTL. Confirm it is upstream, not the app:</p>
+      <div class="cmd"><button class="copy" type="button">copy</button>
+<pre>curl -s localhost:8000/metrics | grep missing_from_batch</pre></div>
+    </div>
+
+    <div class="tr-item">
+      <h4>Container reports unhealthy while clearly serving</h4>
+      <div class="sym">"wget: can't connect to remote host: Connection refused"</div>
+      <p>IPv6. Container <code>/etc/hosts</code> maps <code>localhost</code> to <code>::1</code> as
+      well as <code>127.0.0.1</code>, busybox <code>wget</code> tries IPv6 first, and nginx binds
+      IPv4 only. Health probes are pinned to <code>127.0.0.1</code> for exactly this reason — if you
+      add a probe, do the same.</p>
+    </div>
+
+    <div class="tr-item">
+      <h4>Gold watch runs but no email arrives</h4>
+      <div class="sym">emailed=False, or email_error in the run row</div>
+      <p>Usually <code>SMTP_PASSWORD</code> is blank. It may also be the alert limiter — six per day,
+      45-minute cooldown — which records why it suppressed rather than staying silent:</p>
+      <div class="cmd"><button class="copy" type="button">copy</button>
+<pre>.venv/bin/python gold_watch_run.py --test-email
+curl -s -H "Authorization: Bearer $TOKEN" localhost:8000/api/gold/runs | head -c 400</pre></div>
+    </div>
+
+    <div class="tr-item">
+      <h4>Phone cannot reach the app any more</h4>
+      <div class="sym">worked yesterday, times out today</div>
+      <p>Your LAN IP changed — it is DHCP-assigned. The app binds all interfaces
+      (<code>host: true</code> in <code>vite.config.js</code>), so only the address moved:</p>
+      <div class="cmd"><button class="copy" type="button">copy</button>
+<pre>ipconfig getifaddr en0</pre></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Where things live</span>
+    <h2>File map</h2>
+  </div>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Path</th><th>Contains</th></tr></thead>
+      <tbody>
+        <tr><td><code>backend/app/agents/</code></td><td>Analyst, Screener, Gold Watch, guardrails, and the shared runner</td></tr>
+        <tr><td><code>backend/app/routers/</code></td><td>One module per API area — watchlist, analysis, picks, gold, portfolio, chat, documents, metrics</td></tr>
+        <tr><td><code>backend/app/</code></td><td>Deterministic services: <code>market_data</code>, <code>fundamentals</code>, <code>conviction</code>, <code>allocation</code>, <code>smallcap</code>, <code>gold_factors</code>, <code>gold_scenarios</code>, <code>cache</code>, <code>ratelimit</code>, <code>observability</code>, <code>safety</code></td></tr>
+        <tr><td><code>backend/*.py</code></td><td>Runnable scripts — <code>gold_watch_run</code>, <code>eval_gold</code>, <code>eval_rag</code></td></tr>
+        <tr><td><code>deploy/</code></td><td><code>nginx.conf</code>, cert script, and <code>elk/</code> with the Filebeat and Kibana bootstrap</td></tr>
+        <tr><td><code>frontend/src/components/</code></td><td>12 React components; the tables and the stock drawer</td></tr>
+        <tr><td><code>DESIGN.html</code></td><td>The high-level design, with diagrams</td></tr>
+        <tr><td><code>DESIGN.md</code> · <code>DESIGN_ANALYSIS.md</code> · <code>AGENTIC_AI_DESIGN.md</code></td><td>Detail, options considered, and the agent layer part by part</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <p>Two files are runtime state and are deliberately not in git: <code>backend/.env</code> (keys
+    and password) and <code>backend/adviser.db</code> with its <code>-wal</code> and <code>-shm</code>
+    siblings. <code>deploy/certs/</code> is ignored too — private keys never belong in a repo.</p>
+  </div>
+</section>
+
+<footer>
+  <p>Backend FastAPI · SQLAlchemy · SQLite · yfinance · google-genai. Frontend React + Vite.
+  Gateway nginx. Cache Redis. Logs Elasticsearch + Kibana. All free tiers.</p>
+  <p>Informational research from public sources — not investment advice.</p>
+</footer>
+
+</div>
+
+<script>
+// A runbook exists to be copied from, so every command block copies cleanly:
+// prompts and inline comments are stripped, leaving only runnable lines.
+document.querySelectorAll(".cmd").forEach((block) => {
+  const button = block.querySelector(".copy");
+  const pre = block.querySelector("pre");
+  if (!button || !pre) return;
+  button.addEventListener("click", async () => {
+    const text = Array.from(pre.childNodes)
+      .filter((n) => !(n.nodeType === 1 && n.classList.contains("c")))
+      .map((n) => n.textContent)
+      .join("")
+      .split("\n")
+      .map((l) => l.replace(/\s+$/, ""))
+      .filter((l) => l.length)
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      button.textContent = "copied";
+      button.classList.add("ok");
+    } catch {
+      button.textContent = "select manually";
+    }
+    setTimeout(() => {
+      button.textContent = "copy";
+      button.classList.remove("ok");
+    }, 1600);
+  });
+});
+</script>
+
+</body>
+</html>

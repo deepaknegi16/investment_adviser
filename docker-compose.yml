@@ -113,6 +113,19 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Creates the Kibana data view. Without it Discover is empty even when the
+  # index is full, which looks exactly like a broken pipeline.
+  kibana-init:
+    image: curlimages/curl:8.10.1
+    profiles: ["observability"]
+    volumes:
+      - ./deploy/elk/kibana-init.sh:/init.sh:ro
+    entrypoint: ["sh", "/init.sh"]
+    depends_on:
+      kibana:
+        condition: service_started
+    restart: on-failure
+
   filebeat:
     image: docker.elastic.co/beats/filebeat:8.15.3
     profiles: ["observability"]
