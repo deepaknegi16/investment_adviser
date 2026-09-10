@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
 from pathlib import Path
 
 from sqlalchemy import (
@@ -9,7 +10,24 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
-DB_PATH = Path(__file__).resolve().parent.parent / "adviser.db"
+# The database lives in a DIRECTORY that is mounted as a directory, not as a
+# single file. WAL mode creates adviser.db-wal and adviser.db-shm beside it, and
+# bind-mounting only the main file left the container writing its own -wal and
+# -shm inside its own layer: two processes sharing one main database while
+# coordinating through *different* -shm files, which is how SQLite corruption
+# happens. Mounting the directory keeps all three together.
+DB_DIR = Path(os.environ.get("ADVISER_DB_DIR",
+                             Path(__file__).resolve().parent.parent / "data"))
+DB_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = DB_DIR / "adviser.db"
+
+# One-time move for checkouts created before the directory layout.
+_legacy = Path(__file__).resolve().parent.parent / "adviser.db"
+if _legacy.exists() and not DB_PATH.exists():
+    for suffix in ("", "-wal", "-shm"):
+        src = Path(str(_legacy) + suffix)
+        if src.exists():
+            src.replace(Path(str(DB_PATH) + suffix))
 engine = create_engine(
     f"sqlite:///{DB_PATH}",
     connect_args={"check_same_thread": False, "timeout": 30},

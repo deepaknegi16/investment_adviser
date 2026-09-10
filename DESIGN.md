@@ -733,6 +733,18 @@ throws the cache away either.
 busy timeout is set per connection in `db.py`; verified with four concurrent
 writers completing 100/100 writes.
 
+**And WAL then forced the database into a directory.** The compose file
+originally bind-mounted the single file `./backend/adviser.db`. WAL creates
+`adviser.db-wal` and `adviser.db-shm` beside it, and those were *not* mounted —
+so the container wrote its own pair inside its own layer while sharing the main
+database file with the host. Two writers, one database, and **different `-shm`
+files**, which is precisely the coordination file SQLite uses for WAL locking.
+It appeared to work because the WAL happened to be checkpointed; concurrent
+writes would have corrupted it silently. The database now lives in
+`backend/data/` and the *directory* is mounted, so all three files stay
+together. `ADVISER_DB_DIR` overrides the location, and an existing database at
+the old path is moved on first start.
+
 **Rate limiting exists in two places on purpose.** nginx protects the process
 from ever seeing a flood; `ratelimit.py` means the app is still safe if it is
 ever run without the proxy — which is exactly how it runs locally. Login counts
@@ -762,6 +774,19 @@ a specific incident here was hard to diagnose without it.
 | **Structured logs** | JSON on stdout → Filebeat → Elasticsearch | What happened, in what order, for which request |
 | **Metrics** | `/metrics`, Prometheus exposition | How often, how slow, what fraction failed |
 | **Domain counters** | same endpoint | Did Yahoo drop symbols? Is the quota gone? Is the cache working? |
+
+**Middleware order is counterintuitive and was wrong.** Starlette's
+`add_middleware` — which `app.middleware()` calls — **inserts at position 0**, so
+the *last* registered ends up outermost. Registering observability first
+therefore buried it inside the rate limiter, and every `429` the limiter
+short-circuited was neither logged nor counted: throttling was completely
+invisible. Registered inner-to-outer, the effective chain is
+`CORS → observability → rate limit → route`.
+
+A `429` is labelled `route="unmatched"` in metrics because the limiter answers
+before routing resolves. That is deliberate — falling back to the raw path would
+reintroduce unbounded cardinality — and the log line carries `http_path`, so the
+endpoint is never lost.
 
 **Request correlation.** Every request gets an `x-request-id` (accepted from the
 client if supplied, generated otherwise), carried in a `ContextVar` so any code

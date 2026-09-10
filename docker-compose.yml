@@ -34,10 +34,13 @@ services:
       # Counters live in a shared dir because each --workers process is separate;
       # without this /metrics would report only whichever worker was scraped.
       PROMETHEUS_MULTIPROC_DIR: /tmp/prom
+      ADVISER_DB_DIR: /app/data
     volumes:
-      # The database is state; the image is not. Bind-mounted so the container
-      # and a local `uvicorn` run share one database rather than diverging.
-      - ./backend/adviser.db:/app/adviser.db
+      # A DIRECTORY, not a file. WAL creates adviser.db-wal and -shm beside the
+      # database; mounting only the main file gave the container its own -wal and
+      # -shm, so host and container shared one database while coordinating
+      # through different lock files — silent corruption waiting to happen.
+      - ./backend/data:/app/data
       - ./backend/jwt_secret.key:/app/jwt_secret.key
     depends_on:
       redis:

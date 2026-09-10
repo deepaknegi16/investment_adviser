@@ -21,13 +21,16 @@ obs.setup_logging()
 
 app = FastAPI(title="Indian Stock Portfolio Adviser")
 
-# Outermost middleware: it must see the request id and the final status of
-# everything below it, including responses the rate limiter short-circuits.
-app.middleware("http")(obs.middleware)
-
-# Rate limiting sits outside CORS so a throttled response still carries the
-# headers the browser needs to read it.
+# ORDER MATTERS AND IS COUNTERINTUITIVE. Starlette's add_middleware (which
+# app.middleware() calls) INSERTS AT POSITION 0, so the last one registered ends
+# up outermost. Registering observability first therefore buried it *inside* the
+# rate limiter, and every 429 the limiter short-circuited was neither logged nor
+# counted — throttling was completely invisible.
+#
+# Registered inner-to-outer, the effective chain is:
+#     CORS -> observability -> rate limit -> route
 app.middleware("http")(ratelimit.middleware)
+app.middleware("http")(obs.middleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -47,6 +50,14 @@ app.include_router(documents.router, dependencies=protected)
 app.include_router(metrics.router, dependencies=protected)
 app.include_router(gold.router, dependencies=protected)
 app.include_router(portfolio.router, dependencies=protected)
+
+
+@app.on_event("shutdown")
+def shutdown() -> None:
+    # Each uvicorn worker owns a counter file in PROMETHEUS_MULTIPROC_DIR; a
+    # worker that exits without clearing it leaves the file to be scraped
+    # forever.
+    obs.mark_worker_dead(os.getpid())
 
 
 @app.on_event("startup")

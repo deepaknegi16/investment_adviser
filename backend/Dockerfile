@@ -14,14 +14,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY *.py *.json ./
 
-# adviser.db lives on a volume, not in the image — see compose.
+# The database directory is mounted from the host — see compose.
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 
 # Run as a non-root user; the volume is chowned to match.
 # Prometheus multiprocess counters need a shared, writable directory: each
 # uvicorn worker is its own process and writes its own counter file there.
-RUN mkdir -p /tmp/prom && useradd -u 10001 -m adviser \
-    && chown -R adviser:adviser /app /tmp/prom
+RUN mkdir -p /tmp/prom /app/data && useradd -u 10001 -m adviser \
+    && chown -R adviser:adviser /app /tmp/prom /app/data
 USER adviser
 
 HEALTHCHECK --interval=20s --timeout=4s --start-period=15s --retries=3 \

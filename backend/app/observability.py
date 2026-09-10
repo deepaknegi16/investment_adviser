@@ -161,6 +161,20 @@ def metric(name: str, labels: Optional[dict] = None, observe: Optional[float] = 
         pass   # instrumentation must never break the thing it measures
 
 
+def mark_worker_dead(pid: int) -> None:
+    """Drop a dead worker's counter files.
+
+    Without this /tmp/prom accumulates one file set per worker per restart, and
+    gauges from processes that no longer exist keep being reported.
+    """
+    try:
+        from prometheus_client import multiprocess
+
+        multiprocess.mark_process_dead(pid)
+    except Exception:
+        pass
+
+
 def exposition() -> tuple[bytes, str]:
     """The /metrics payload for Prometheus to scrape."""
     p = _prom()

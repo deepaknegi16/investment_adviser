@@ -603,3 +603,44 @@ The app could have written to Elasticsearch directly. It does not, because that
 couples application availability to log-store availability and makes
 `docker compose logs` useless. Writing to stdout and letting the runtime
 handle the rest is the 12-factor answer and keeps the failure modes separate.
+
+## 26. Architecture review findings
+
+A deliberate pass over the whole system rather than the last diff. Three real
+defects, all of which looked fine from the outside.
+
+### Bind-mounting a SQLite database as a file, with WAL enabled
+
+`./backend/adviser.db:/app/adviser.db` mounts one file. WAL needs three, and the
+`-shm` file is how SQLite coordinates access. The container had its own `-wal`
+and `-shm` inside its layer while sharing the main database with the host, so
+host and container were two uncoordinated writers to one database. It passed
+casual testing because the WAL was checkpointed at the time. Fixed by moving the
+database into `backend/data/` and mounting the directory.
+
+The general lesson is worth keeping: **bind-mount the directory, never the file,
+for anything that writes sidecar files** — SQLite WAL, lock files, temp files.
+
+### Middleware registered in the wrong order
+
+`app.middleware()` inserts at position 0, so registration order is the reverse of
+execution order. Observability was registered first and therefore ran innermost,
+inside the rate limiter, which meant every throttled request was invisible to
+both logs and metrics. The comment in the code asserted the opposite, which is
+how it survived review the first time — the fix included deleting the comment
+that made the bug look intentional.
+
+### Prometheus multiprocess files leaked
+
+Each worker owns a counter file in `PROMETHEUS_MULTIPROC_DIR`. Nothing called
+`mark_process_dead`, so restarts accumulated files and dead workers' gauges kept
+being scraped. Now cleared in a shutdown hook.
+
+### Checked and found sound
+
+Cache migration left no dead code (`_lock` and `time` are still used for the
+yfinance session and TTLs). Rate limiting exempts health and readiness so probes
+cannot exhaust the budget. `/metrics` is outside `/api` and therefore outside the
+limiter, which is correct for a scrape endpoint. The lazy `observability` imports
+inside `cache` and `market_data` are deliberate — they break a genuine import
+cycle and keep instrumentation optional.
