@@ -198,11 +198,11 @@ open http://localhost:5601/app/discover#/view/adviser-requests</pre>
     <table>
       <thead><tr><th>Component</th><th>Tier</th><th>Port</th><th>What it does</th></tr></thead>
       <tbody>
-        <tr><td><b>backend</b><br><code>uvicorn · FastAPI</code></td><td><span class="pill core">core</span></td><td class="mono">8000</td><td>The application. 38 routes, 3 workers in Docker, 1 locally</td></tr>
+        <tr><td><b>backend</b><br><code>uvicorn · FastAPI</code></td><td><span class="pill core">core</span></td><td class="mono">8000</td><td>The application. 32 API routes, 3 workers in Docker, 1 locally</td></tr>
         <tr><td><b>frontend</b><br><code>React · Vite</code></td><td><span class="pill core">core</span></td><td class="mono">5173</td><td>SPA. In Docker it is built once and served by nginx instead</td></tr>
         <tr><td><b>gateway</b><br><code>nginx</code></td><td><span class="pill core">docker</span></td><td class="mono">80 · 443</td><td>TLS, HTTP→HTTPS redirect, edge rate limiting, static assets, <code>least_conn</code> balancing</td></tr>
         <tr><td><b>redis</b></td><td><span class="pill core">docker</span></td><td class="mono">6379</td><td>Cache shared by all workers. Without it each worker refetches what the others already have</td></tr>
-        <tr><td><b>SQLite</b><br><code>adviser.db</code></td><td><span class="pill core">core</span></td><td class="mono">—</td><td>Watchlist plus every cached result. WAL mode so workers do not deadlock</td></tr>
+        <tr><td><b>SQLite</b><br><code>backend/data/</code></td><td><span class="pill core">core</span></td><td class="mono">—</td><td>Watchlist plus every cached result. WAL mode so workers do not deadlock. Lives in a <b>directory</b> because WAL writes <code>-wal</code> and <code>-shm</code> siblings that must share the mount</td></tr>
         <tr><td><b>elasticsearch</b></td><td><span class="pill obs">observability</span></td><td class="mono">9200</td><td>Log index. Loopback only, security disabled — local use only</td></tr>
         <tr><td><b>kibana</b></td><td><span class="pill obs">observability</span></td><td class="mono">5601</td><td>Log search and dashboards</td></tr>
         <tr><td><b>filebeat</b></td><td><span class="pill obs">observability</span></td><td class="mono">—</td><td>Ships container stdout, parsing the backend's JSON into fields</td></tr>
@@ -429,8 +429,8 @@ curl -s -H "Authorization: Bearer $TOKEN" localhost:8000/api/gold/runs | head -c
 
   <div class="note">
     <p>Two files are runtime state and are deliberately not in git: <code>backend/.env</code> (keys
-    and password) and <code>backend/adviser.db</code> with its <code>-wal</code> and <code>-shm</code>
-    siblings. <code>deploy/certs/</code> is ignored too — private keys never belong in a repo.</p>
+    and password) and <code>backend/data/</code>, which holds the database and its <code>-wal</code>
+    and <code>-shm</code> siblings. <code>deploy/certs/</code> is ignored too — private keys never belong in a repo.</p>
   </div>
 </section>
 

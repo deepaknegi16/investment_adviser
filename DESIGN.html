@@ -152,10 +152,11 @@ footer p{max-width:none;margin-bottom:9px}
   arithmetic and judgment: everything computable is computed in Python for free in milliseconds,
   and the model is spent only where a human would actually have to think.</p>
   <div class="facts">
-    <div class="fact"><div class="n">30</div><div class="k">API routes</div></div>
+    <div class="fact"><div class="n">32</div><div class="k">API routes</div></div>
     <div class="fact"><div class="n">12</div><div class="k">SQLite tables</div></div>
+    <div class="fact"><div class="n">8</div><div class="k">containers, full stack</div></div>
     <div class="fact"><div class="n">3</div><div class="k">AI agents</div></div>
-    <div class="fact"><div class="n">6.1k</div><div class="k">backend LOC</div></div>
+    <div class="fact"><div class="n">6.7k</div><div class="k">backend LOC</div></div>
     <div class="fact"><div class="n">₹0</div><div class="k">running cost</div></div>
   </div>
 </header>
@@ -474,7 +475,87 @@ footer p{max-width:none;margin-bottom:9px}
 
 <section>
   <div class="sec-head">
-    <span class="eyebrow">04 — the agents</span>
+    <span class="eyebrow">04 — observability</span>
+    <h2>Signals shaped by the incidents that produced them</h2>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 880 250" role="img" aria-label="Two independent signal paths: the application writes JSON to stdout which Docker captures and Filebeat ships to Elasticsearch and Kibana, while Prometheus scrapes a metrics endpoint directly. The application has no knowledge of either backend.">
+      <defs>
+        <marker id="ar5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <rect x="0" y="86" width="176" height="66" rx="5" fill="var(--free-bg)" stroke="var(--free)" stroke-width="1.5"/>
+      <text x="88" y="110" text-anchor="middle" font-family="monospace" font-size="11.5" font-weight="600" fill="var(--free)">the application</text>
+      <text x="88" y="127" text-anchor="middle" font-family="monospace" font-size="9.5" fill="var(--muted)">knows about neither</text>
+      <text x="88" y="141" text-anchor="middle" font-family="monospace" font-size="9.5" fill="var(--muted)">backend below</text>
+
+      <text x="196" y="52" font-family="monospace" font-size="10" fill="var(--muted)" letter-spacing="1">LOGS — PUSHED</text>
+      <line x1="176" y1="104" x2="238" y2="80" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar5)"/>
+      <text x="196" y="98" font-family="monospace" font-size="9" fill="var(--muted)">JSON to stdout</text>
+      <rect x="238" y="60" width="132" height="38" rx="4" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+      <text x="304" y="84" text-anchor="middle" font-family="monospace" font-size="10.5" fill="currentColor">docker captures</text>
+      <line x1="370" y1="79" x2="418" y2="79" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar5)"/>
+      <rect x="418" y="60" width="110" height="38" rx="4" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+      <text x="473" y="84" text-anchor="middle" font-family="monospace" font-size="10.5" fill="currentColor">filebeat</text>
+      <line x1="528" y1="79" x2="576" y2="79" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar5)"/>
+      <rect x="576" y="60" width="140" height="38" rx="4" fill="var(--metered-bg)" stroke="var(--metered)" stroke-width="1.5"/>
+      <text x="646" y="84" text-anchor="middle" font-family="monospace" font-size="10.5" fill="var(--metered)">elasticsearch</text>
+      <line x1="716" y1="79" x2="760" y2="79" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar5)"/>
+      <rect x="760" y="60" width="112" height="38" rx="4" fill="var(--metered-bg)" stroke="var(--metered)" stroke-width="1.5"/>
+      <text x="816" y="84" text-anchor="middle" font-family="monospace" font-size="10.5" fill="var(--metered)">kibana</text>
+
+      <text x="196" y="196" font-family="monospace" font-size="10" fill="var(--muted)" letter-spacing="1">METRICS — PULLED</text>
+      <line x1="238" y1="170" x2="180" y2="140" stroke="var(--external)" stroke-width="1.5" marker-end="url(#ar5)" color="var(--external)"/>
+      <text x="196" y="164" font-family="monospace" font-size="9" fill="var(--external)">scrapes /metrics</text>
+      <rect x="238" y="150" width="290" height="38" rx="4" fill="var(--external-bg)" stroke="var(--external)" stroke-width="1.5"/>
+      <text x="383" y="174" text-anchor="middle" font-family="monospace" font-size="10.5" fill="var(--external)">prometheus exposition · aggregated over 3 workers</text>
+
+      <text x="556" y="168" font-family="monospace" font-size="9.5" fill="var(--muted)">counters live in a shared dir, because each</text>
+      <text x="556" y="182" font-family="monospace" font-size="9.5" fill="var(--muted)">worker is its own process</text>
+
+      <line x1="0" y1="222" x2="880" y2="222" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 5"/>
+      <text x="0" y="240" font-family="monospace" font-size="9.5" fill="var(--faint)">ELK is opt-in — 1.7 GB against the application stack's 420 MB — and `docker compose logs` still works without it</text>
+    </svg>
+    <figcaption>Logs are pushed, metrics are pulled, and neither path is a dependency of the
+    application. It writes JSON to stdout and answers a scrape; everything downstream can be
+    switched off.</figcaption>
+  </figure>
+
+  <p>The metrics are deliberately domain-shaped rather than a generic HTTP dashboard, because a
+  generic dashboard would not have caught a single one of this project's real incidents. The counter
+  list is effectively a list of past failures.</p>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Counter</th><th>The incident it exists for</th></tr></thead>
+      <tbody>
+        <tr><td><code>yahoo_fetch_total{outcome="missing_from_batch"}</code></td><td>Symbols silently dropped from a batch — twice — surfacing only as "no data available" in the UI</td></tr>
+        <tr><td><code>agent_runs_total{outcome="quota_exhausted"}</code></td><td>An exhausted search quota and a broken agent produced identical output</td></tr>
+        <tr><td><code>cache_total{result}</code></td><td>Whether the shared cache does anything, or every worker refetches</td></tr>
+        <tr><td><code>guardrail_violations_total{kind}</code></td><td>Which guardrail fired, and how often</td></tr>
+        <tr><td><code>gold_alerts_total{outcome}</code></td><td>Whether a quiet inbox means nothing happened, or the limiter suppressed it</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p><b>Request correlation.</b> Every request carries an <code>x-request-id</code> — taken from the
+  client if supplied, generated otherwise — held in a <code>ContextVar</code> so any code can log
+  against it without threading it through call signatures, and returned in the response header. One
+  id ties a user-visible failure to every server line that produced it.</p>
+
+  <div class="note">
+    <p><b>Metrics label the templated route</b>, <code>/api/stocks/{symbol}/…</code>, never the
+    literal path. Labelling on raw paths creates a time series per symbol, which is the standard way
+    to make a Prometheus instance fall over.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">05 — the agents</span>
     <h2>Three agents, one runner</h2>
   </div>
 
@@ -520,7 +601,7 @@ footer p{max-width:none;margin-bottom:9px}
 
 <section>
   <div class="sec-head">
-    <span class="eyebrow">05 — the gold chain</span>
+    <span class="eyebrow">06 — the gold chain</span>
     <h2>Which link moved?</h2>
   </div>
 
@@ -564,7 +645,7 @@ footer p{max-width:none;margin-bottom:9px}
 
 <section>
   <div class="sec-head">
-    <span class="eyebrow">06 — position sizing</span>
+    <span class="eyebrow">07 — position sizing</span>
     <h2>How much, not just whether</h2>
   </div>
 
@@ -635,7 +716,7 @@ footer p{max-width:none;margin-bottom:9px}
 
 <section>
   <div class="sec-head">
-    <span class="eyebrow">07 — the engineering record</span>
+    <span class="eyebrow">08 — the engineering record</span>
     <h2>What measurement changed</h2>
   </div>
 
@@ -675,6 +756,23 @@ footer p{max-width:none;margin-bottom:9px}
       <span class="fix">one allocation</span> over the union.</p>
     </div>
     <div class="finding">
+      <h4>A SQLite database bind-mounted as a <span class="num">file</span>, with WAL enabled</h4>
+      <p>WAL creates <code>-wal</code> and <code>-shm</code> beside the database, and mounting only
+      the main file left the container writing its own pair inside its own layer — two uncoordinated
+      writers to one database, through the very file (<code>-shm</code>) SQLite uses to coordinate.
+      It passed casual testing because the WAL happened to be checkpointed. The rule that came out
+      of it: <span class="fix">mount the directory, never the file</span>, for anything that writes
+      sidecar files.</p>
+    </div>
+    <div class="finding">
+      <h4>Throttling was <span class="num">completely invisible</span> to logs and metrics</h4>
+      <p>Starlette's <code>add_middleware</code> inserts at position 0, so registration order is the
+      reverse of execution order. Observability was registered first and therefore ran <em>inside</em>
+      the rate limiter, so every 429 it short-circuited was never seen. Measured: 0 log lines and 0
+      metric samples before, <span class="fix">3 and 3</span> after. The comment above it asserted
+      the opposite, which is how it survived being written.</p>
+    </div>
+    <div class="finding">
       <h4>A missing <code>.env</code> silently downgraded auth from locked to <span class="num">open</span></h4>
       <p><code>AUTH_PASSWORD</code> fell back to a default that <code>.env.example</code> shipped
       verbatim — and the app kept serving traffic. The startup hook now
@@ -686,7 +784,7 @@ footer p{max-width:none;margin-bottom:9px}
 
 <section>
   <div class="sec-head">
-    <span class="eyebrow">08 — failure posture</span>
+    <span class="eyebrow">09 — failure posture</span>
     <h2>What happens when things break</h2>
   </div>
 
@@ -714,7 +812,7 @@ footer p{max-width:none;margin-bottom:9px}
 
 <section>
   <div class="sec-head">
-    <span class="eyebrow">09 — storage</span>
+    <span class="eyebrow">10 — storage</span>
     <h2>Twelve tables, one file</h2>
   </div>
 
@@ -723,6 +821,7 @@ footer p{max-width:none;margin-bottom:9px}
       <thead><tr><th>Group</th><th>Tables</th><th>Holds</th></tr></thead>
       <tbody>
         <tr><td><b>State</b></td><td class="mono">watchlist</td><td>The only user-owned data in the system</td></tr>
+        <tr><td><b>Location</b></td><td class="mono">backend/data/</td><td>A directory, not a bare file — WAL's <code>-wal</code> and <code>-shm</code> siblings must share a mount with the database or two writers coordinate through different lock files</td></tr>
         <tr><td><b>AI caches</b></td><td class="mono">ai_analysis · ai_picks · ai_holders · smallcap_screen</td><td>Keyed by date, so a repeat view costs nothing</td></tr>
         <tr><td><b>Retrieval</b></td><td class="mono">rag_chunks</td><td>Flattened research + embeddings for the chat</td></tr>
         <tr><td><b>Gold watch</b></td><td class="mono">gold_events · gold_watch_runs</td><td>The event id <em>is</em> a content hash — dedupe by construction</td></tr>

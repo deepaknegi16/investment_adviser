@@ -91,7 +91,7 @@ The Vite dev server proxies `/api` to the backend on port 8000.
 - The watchlist is seeded on first run with: Infosys, Wipro, Goldbees, Adani Green,
   HDFC Bank, ONGC, BEL, PNB, ATGL, ITC, LIC, SBI. Add more via **＋ Add share**
   (search by company name; NSE symbols only).
-- AI analysis is cached per share per day in `backend/adviser.db`; use
+- AI analysis is cached per share per day in `backend/data/adviser.db`; use
   **↻ Refresh AI analysis** / **↻ Refresh picks** to force a rerun. A full agent run
   can take a few minutes.
 - The screener universe lives in `backend/app/nifty100.json` — edit it to widen or

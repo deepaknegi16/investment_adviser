@@ -353,7 +353,7 @@ was chosen?* The precise answer has three layers:
    embedding from `gemini-embedding-001`, and retrieval ranks chunks by
    **cosine similarity** against the embedded question.
 2. **But there is no vector database.** The store is plain **SQLite** — the
-   same `adviser.db` file as the watchlist. Each chunk is a row in
+   same `adviser.db` file as the watchlist (in `backend/data/`). Each chunk is a row in
    `rag_chunks`; the vector is a JSON array in a text column; the similarity
    math runs **in-process with numpy** inside `rag.search()`.
 3. **And there is a vector-less fallback.** When embeddings can't be produced
@@ -706,9 +706,9 @@ best-effort so observability can never break an answer. The JWT-protected
 Raw inspection, when you want to poke the tables directly:
 
 ```sh
-sqlite3 backend/adviser.db "SELECT substr(doc_key,1,instr(doc_key,':')-1) src,
+sqlite3 backend/data/adviser.db "SELECT substr(doc_key,1,instr(doc_key,':')-1) src,
   COUNT(*), SUM(embedding IS NOT NULL) embedded FROM rag_chunks GROUP BY src;"
-sqlite3 backend/adviser.db "SELECT ts, provider, retrieval_mode, top_score,
+sqlite3 backend/data/adviser.db "SELECT ts, provider, retrieval_mode, top_score,
   latency_ms FROM chat_log ORDER BY id DESC LIMIT 10;"
 ```
 
