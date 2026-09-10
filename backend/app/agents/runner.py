@@ -36,6 +36,16 @@ class AgentUnavailable(Exception):
     """Raised when the AI layer can't run (no key, quota, bad output)."""
 
 
+def _count(agent: str, outcome: str) -> None:
+    """Quota exhaustion and a broken agent looked identical in the logs."""
+    try:
+        from .. import observability as _obs
+
+        _obs.metric("agent", {"agent": agent, "outcome": outcome})
+    except Exception:
+        pass
+
+
 def _gemini() -> genai.Client:
     global _gemini_client
     if _gemini_client is None:
@@ -64,11 +74,13 @@ def _groq():
 def _map_gemini_error(e: Exception) -> AgentUnavailable:
     code = getattr(e, "code", None)
     if code == 429:
+        _count("any", "quota_exhausted")
         return AgentUnavailable(
             "Gemini free-tier limit reached for now — try again in a minute "
             "(daily quotas reset at midnight Pacific)."
         )
     if code in (401, 403):
+        _count("any", "auth_rejected")
         return AgentUnavailable(
             "Gemini API key was rejected — check GEMINI_API_KEY in backend/.env."
         )

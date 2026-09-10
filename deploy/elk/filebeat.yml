@@ -1,0 +1,49 @@
+# Ships container stdout to Elasticsearch. The app knows nothing about this —
+# it writes JSON to stdout and the runtime does the rest, so the log pipeline
+# can be swapped or switched off without touching application code.
+filebeat.autodiscover:
+  providers:
+    - type: docker
+      hints.enabled: false
+      templates:
+        - condition:
+            contains:
+              docker.container.image: investmant_adviser-backend
+          config:
+            - type: container
+              paths: ["/var/lib/docker/containers/${data.docker.container.id}/*.log"]
+              processors:
+                # The app already emits JSON, so parse it into real fields
+                # rather than shipping the whole line as an opaque string.
+                - decode_json_fields:
+                    fields: ["message"]
+                    target: ""
+                    overwrite_keys: true
+                    add_error_key: true
+
+        - condition:
+            contains:
+              docker.container.image: nginx
+          config:
+            - type: container
+              paths: ["/var/lib/docker/containers/${data.docker.container.id}/*.log"]
+
+processors:
+  - add_docker_metadata: ~
+  - drop_event:
+      when:
+        or:
+          # Health probes every 20s would dominate the index and tell us nothing.
+          - contains: {http_path: "/api/health"}
+          - contains: {message: "/api/health"}
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+  index: "adviser-%{+yyyy.MM.dd}"
+
+setup.template.name: "adviser"
+setup.template.pattern: "adviser-*"
+setup.ilm.enabled: false
+setup.kibana.host: "http://kibana:5601"
+
+logging.level: warning

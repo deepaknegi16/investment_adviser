@@ -348,6 +348,17 @@ def run_and_alert(
             except Exception as e:  # a dead SMTP host must not lose the research
                 email_error = f"{type(e).__name__}: {e}"
 
+        try:
+            from .. import observability as _obs
+
+            _obs.metric("alerts", {"outcome": "sent" if emailed else (
+                "suppressed" if suppressed_reason else "not_material")})
+            for v in violations:
+                _obs.metric("guardrail", {"kind": v.get("kind", "?"),
+                                          "severity": v.get("severity", "?")})
+        except Exception:
+            pass
+
         _store(db, new_events, alerted=emailed)
         snap = result.get("snapshot", {})
         run = GoldWatchRun(

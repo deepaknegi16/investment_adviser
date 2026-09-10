@@ -666,6 +666,7 @@ than by a query — dedupe cannot be forgotten at a call site.
 | Endpoint | Behavior |
 |---|---|
 | `GET /api/health` | Liveness — public, no auth. Used by Docker and nginx |
+| `GET /metrics` | Prometheus exposition — counters and latency histograms, no portfolio data, not exposed through nginx |
 | `GET /api/ready` | Readiness — worker pid, cache backend, rate-limit config, DB reachability |
 | `GET /api/watchlist` | Full table (prices, returns, status, advice, sector) |
 | `GET /api/allocation` | **One** set of suggested weights over the union of holdings and screener candidates — the single source both tables read |
@@ -748,6 +749,70 @@ limiting.
 | Long requests | `proxy_read_timeout 600s` — the default 60s would cut an AI refresh off as a 504 that looks like a bug |
 | Client IP | `X-Forwarded-For`, honoured **only** when `TRUST_PROXY` is set, so a direct-to-uvicorn deployment cannot be spoofed |
 | Liveness vs readiness | `/api/health` is "is the process up"; `/api/ready` reports which cache backend and limits are live. A worker whose Redis vanished is still correct, so it must not be pulled from the pool |
+
+## 9c. Observability
+
+Before this the only signals were uvicorn's plain-text access lines and an
+`/api/metrics` endpoint that counts database rows. Neither answers the questions
+this codebase has actually needed answered — every counter below exists because
+a specific incident here was hard to diagnose without it.
+
+| Signal | Where | Answers |
+|---|---|---|
+| **Structured logs** | JSON on stdout → Filebeat → Elasticsearch | What happened, in what order, for which request |
+| **Metrics** | `/metrics`, Prometheus exposition | How often, how slow, what fraction failed |
+| **Domain counters** | same endpoint | Did Yahoo drop symbols? Is the quota gone? Is the cache working? |
+
+**Request correlation.** Every request gets an `x-request-id` (accepted from the
+client if supplied, generated otherwise), carried in a `ContextVar` so any code
+can log against it without threading it through call signatures, and returned in
+the response header. One id ties the client's failure to every server log line
+that produced it.
+
+**Route templating, not raw paths.** Metrics label on `/api/stocks/{symbol}/…`
+rather than the literal symbol. Labelling on the raw path would create a new
+time series per symbol, which is the standard way to make a Prometheus instance
+fall over.
+
+**Multiprocess counters.** With `--workers 3` each worker is a separate process,
+so counters live in `PROMETHEUS_MULTIPROC_DIR` and are aggregated at scrape
+time. Without it `/metrics` would report only whichever worker happened to
+answer.
+
+### The counters, and the incident each one exists for
+
+| Metric | The incident |
+|---|---|
+| `adviser_yahoo_fetch_total{outcome="missing_from_batch"}` | Symbols silently dropped from a batch — **twice** — surfacing only as "no data available" in the UI |
+| `adviser_agent_runs_total{outcome="quota_exhausted"}` | An exhausted search quota and a broken agent produced identical output |
+| `adviser_cache_total{result}` | Whether the shared cache is doing anything, or every worker is refetching |
+| `adviser_guardrail_violations_total{kind}` | Which guardrail fired, how often |
+| `adviser_gold_alerts_total{outcome}` | Whether a quiet inbox means nothing happened, or the limiter suppressed it |
+| `adviser_rate_limit_rejections_total` | Throttling, separated from real errors |
+
+### ELK is opt-in
+
+Elasticsearch and Kibana together measure **1.7 GB** against the application
+stack's ~420 MB, so they sit behind a compose profile. `docker compose up` is
+unchanged; `docker compose --profile observability up` adds the tier.
+
+The application knows nothing about Elasticsearch. It writes JSON to stdout, the
+container runtime captures it and Filebeat ships it, so the log backend can be
+swapped or switched off without touching application code — and
+`docker compose logs` still works when it is off.
+
+**Two failures worth recording**, both of which silently produced *no logs at
+all* while the app looked perfectly healthy:
+
+- The app emitted `"service": "adviser-backend"` and `"error": "..."` as bare
+  strings. Elasticsearch's beats template maps both as **objects**, so every
+  document failed with `document_parsing_exception` and Filebeat dropped the
+  lot. Nesting them to ECS shape (`service.name`, `error.message`) fixed it.
+- The gateway health probe reported unhealthy while serving 443 perfectly. Its
+  `/etc/hosts` maps `localhost` to `::1` as well as `127.0.0.1`, busybox `wget`
+  tries IPv6 first, and nginx binds IPv4 only. Probes are now pinned to
+  `127.0.0.1`, and a plain-HTTP `/healthz` bypasses the TLS redirect that a
+  redirect-following probe could not survive.
 
 ## 10. Cost, resilience, security
 

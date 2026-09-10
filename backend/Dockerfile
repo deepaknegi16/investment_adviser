@@ -18,11 +18,14 @@ COPY *.py *.json ./
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 
 # Run as a non-root user; the volume is chowned to match.
-RUN useradd -u 10001 -m adviser && chown -R adviser:adviser /app
+# Prometheus multiprocess counters need a shared, writable directory: each
+# uvicorn worker is its own process and writes its own counter file there.
+RUN mkdir -p /tmp/prom && useradd -u 10001 -m adviser \
+    && chown -R adviser:adviser /app /tmp/prom
 USER adviser
 
 HEALTHCHECK --interval=20s --timeout=4s --start-period=15s --retries=3 \
-  CMD curl -fsS http://localhost:8000/api/health || exit 1
+  CMD curl -fsS http://127.0.0.1:8000/api/health || exit 1   # not localhost: see compose
 
 EXPOSE 8000
 # --workers is what makes the shared cache matter: each worker is a separate

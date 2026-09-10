@@ -161,7 +161,15 @@ def backend():
 
 
 def get(namespace: str, key: str) -> Optional[Any]:
-    return backend().get(f"{_PREFIX}{namespace}:{key}")
+    value = backend().get(f"{_PREFIX}{namespace}:{key}")
+    try:
+        from . import observability as _obs
+
+        _obs.metric("cache", {"namespace": namespace,
+                              "result": "miss" if value is None else "hit"})
+    except Exception:
+        pass
+    return value
 
 
 def set(namespace: str, key: str, value: Any, ttl: int) -> None:  # noqa: A001

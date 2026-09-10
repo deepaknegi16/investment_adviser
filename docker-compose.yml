@@ -29,6 +29,11 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
       TRUST_PROXY: "1"                # X-Forwarded-For is nginx's, not a client's
+      LOG_LEVEL: INFO
+      SERVICE_NAME: adviser-backend
+      # Counters live in a shared dir because each --workers process is separate;
+      # without this /metrics would report only whichever worker was scraped.
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prom
     volumes:
       # The database is state; the image is not. Bind-mounted so the container
       # and a local `uvicorn` run share one database rather than diverging.
@@ -61,11 +66,71 @@ services:
       - backend
       - frontend-build
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/api/health", "--spider"]
+      # 127.0.0.1, not localhost: /etc/hosts maps localhost to ::1 as well,
+      # busybox wget tries IPv6 first, and nginx binds IPv4 only — so the probe
+      # got "connection refused" while the gateway was serving fine on 443.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
       interval: 20s
       timeout: 4s
       retries: 3
     restart: unless-stopped
 
+  # ---------------------------------------------------------------- ELK
+  # Opt in with:  docker compose --profile observability up -d
+  # Kept behind a profile because Elasticsearch and Kibana want ~2-3 GB while
+  # the whole application stack runs in about 540 MB.
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    profiles: ["observability"]
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"      # local only; never expose this port
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"    # bounded, or it will take what it likes
+      bootstrap.memory_lock: "true"
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+    ports:
+      - "127.0.0.1:9200:9200"              # loopback only
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.3
+    profiles: ["observability"]
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    ports:
+      - "127.0.0.1:5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.15.3
+    profiles: ["observability"]
+    user: root
+    command: ["filebeat", "-e", "--strict.perms=false"]
+    volumes:
+      - ./deploy/elk/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      # Read-only access to container stdout. The app writes JSON there and is
+      # otherwise unaware this tier exists.
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - fbdata:/usr/share/filebeat/data
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   spa:
+  esdata:
+  fbdata:

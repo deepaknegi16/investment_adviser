@@ -10,14 +10,20 @@ from fastapi.middleware.cors import CORSMiddleware
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from . import auth  # noqa: E402
-from . import cache, ratelimit  # noqa: E402
+from . import cache, observability as obs, ratelimit  # noqa: E402
 from .auth import require_auth, router as auth_router  # noqa: E402
 from .db import init_db  # noqa: E402
 from .routers import (  # noqa: E402
     analysis, chat, documents, gold, metrics, picks, portfolio, watchlist,
 )
 
+obs.setup_logging()
+
 app = FastAPI(title="Indian Stock Portfolio Adviser")
+
+# Outermost middleware: it must see the request id and the final status of
+# everything below it, including responses the rate limiter short-circuits.
+app.middleware("http")(obs.middleware)
 
 # Rate limiting sits outside CORS so a throttled response still carries the
 # headers the browser needs to read it.
@@ -49,6 +55,16 @@ def startup() -> None:
     # published example — never silently fall back to a default.
     auth.verify_configured()
     init_db()
+
+
+@app.get("/metrics", include_in_schema=False)
+def prometheus_metrics():
+    """Prometheus exposition. Unauthenticated by design — it carries counts and
+    latencies, never portfolio data — and nginx does not expose it publicly."""
+    from fastapi.responses import Response
+
+    body, content_type = obs.exposition()
+    return Response(content=body, media_type=content_type)
 
 
 @app.get("/api/health")

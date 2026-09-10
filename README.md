@@ -132,6 +132,29 @@ that is expected; swap in real certs for anything beyond localhost.
 counter store is unreachable — being locked out of your own portfolio is worse
 than a brief gap in limiting.
 
+## Observability
+
+Structured JSON logs, request correlation, and Prometheus metrics — all on by
+default and costing nothing. ELK is opt-in because it is heavy.
+
+```bash
+docker compose up -d                            # logs + metrics, ~420 MB
+docker compose --profile observability up -d    # + ELK, ~1.7 GB more
+```
+
+- **Logs** — one JSON object per request on stdout with `request_id`,
+  `http_route`, `http_status`, `duration_ms`. The `x-request-id` header comes
+  back to the client, so one id ties a user-visible failure to every server line
+  behind it.
+- **Metrics** — `/metrics` in Prometheus format, aggregated across all workers.
+  Counters are domain-shaped rather than generic: dropped Yahoo symbols, model
+  quota exhaustion, cache hit rate, guardrail hits, alert suppression. Each one
+  exists because a real incident here was hard to diagnose without it.
+- **Kibana** — http://localhost:5601 with the profile running. Make a data view
+  on `adviser-*`, then query `http_status >= 500` or `duration_ms > 5000`.
+
+See `deploy/elk/README.md` for what to look at first.
+
 ## Design docs
 
 - **`DESIGN.html`** — the high-level design as a single self-contained page:

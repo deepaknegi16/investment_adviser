@@ -571,3 +571,35 @@ An LB in front of one user balances nothing on its own; its value here is TLS,
 edge limiting and static serving, with load balancing only mattering because
 there are now three workers. That is worth being explicit about rather than
 implying the tier earns its place on traffic it does not have.
+
+## 25. Observability
+
+### Logs, metrics, or both?
+
+| Option | Pros | Cons |
+|---|---|---|
+| **Both, kept separate** ✅ | Logs answer "what happened for this request", metrics answer "how often and how slow". Counting requests by parsing logs is slower and less accurate than incrementing a counter where the thing happened | Two systems to understand |
+| Logs only, count by querying | One pipeline | Every count depends on the log pipeline being up and the parsing being right — which it was not, for a while, silently |
+| Metrics only | Cheap, bounded | No way to reconstruct a single failing request |
+
+### Why the metrics are domain-shaped
+
+A generic HTTP dashboard would not have caught any of this project's real
+incidents. Yahoo dropping symbols from a batch, an exhausted model quota looking
+identical to a broken agent, a suppressed alert looking identical to a quiet
+market — each needed a counter at the point the thing happened. The metric list
+is effectively a list of past incidents.
+
+### ELK behind a profile
+
+Elasticsearch plus Kibana is 1.7 GB against an application stack of ~420 MB.
+Making it opt-in keeps `docker compose up` fast and means the app never waits on
+a log pipeline to start. The app writes JSON to stdout and knows nothing about
+the backend that consumes it, so the tier is genuinely detachable.
+
+### Stdout, not direct shipping
+
+The app could have written to Elasticsearch directly. It does not, because that
+couples application availability to log-store availability and makes
+`docker compose logs` useless. Writing to stdout and letting the runtime
+handle the rest is the 12-factor answer and keeps the failure modes separate.

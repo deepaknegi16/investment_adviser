@@ -149,6 +149,14 @@ def get_closes(symbols: List[str]) -> Dict[str, pd.Series]:
         # Retry stragglers in PARALLEL and bounded. This loop used to be serial
         # and unbounded, which turned a partially-failed 140-symbol batch into
         # 140 sequential downloads and made the screen endpoint hang for minutes.
+        # The metric that would have caught symbols being silently dropped from
+        # a batch — twice — before it showed up as "no data available" in the UI.
+        from . import observability as _obs
+
+        _obs.metric("yahoo", {"kind": "history", "outcome": "ok"})
+        for _ in [s for s in missing if s not in fetched]:
+            _obs.metric("yahoo", {"kind": "history", "outcome": "missing_from_batch"})
+
         still_missing = [s for s in missing if s not in fetched][:30]
         if still_missing:
             def one(sym):
